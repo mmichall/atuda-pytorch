@@ -1,3 +1,5 @@
+from torch.autograd import Variable
+
 import config
 import torch
 import sys
@@ -5,6 +7,7 @@ from torch.utils.data import DataLoader
 from model import Feedforward
 from data_set import SentimentDataSet, MultiDomainSentimentDataSet
 from pprint import pprint
+import numpy as np
 
 if __name__ == '__main__':
     # CUDA for PyTorch
@@ -21,11 +24,13 @@ if __name__ == '__main__':
     params = {'batch_size': 16,
               'shuffle': True,
               'num_workers': 1}
+
+    params_valid = {'batch_size': len(multidataset.tgt_ds)}
     max_epochs = 100
 
     # Generators
     training_generator = DataLoader(multidataset.src_ds, **params)
-    validation_generator = DataLoader(multidataset.tgt_ds, **params)
+    validation_generator = DataLoader(multidataset.tgt_ds, **params_valid)
 
     model = Feedforward(5000, 10)
     model.to(device)
@@ -58,21 +63,19 @@ if __name__ == '__main__':
         sys.stdout.write('\n')
 
         # Validation
+        acc = 0
         with torch.set_grad_enabled(False):
-            batch = 0
-            loss_all = 0
             for local_batch, local_labels in validation_generator:
                 # Transfer to GPU
-                batch += 1
-                local_batch, local_labels = local_batch.to(device, torch.float), local_labels.to(device, torch.float)
+                local_batch = local_batch.to(device, torch.float)
 
                 # Model computations
                 y_pred = model(local_batch)
+                t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold
+                out = (y_pred > t)
+                out = out.cpu().numpy().flatten()
+                local_labels = local_labels.cpu().numpy()
 
-                loss = criterion(y_pred.squeeze(), local_labels)
+                acc = (out == local_labels).sum() / len(local_labels)
 
-                loss_all += loss.item()
-                sys.stdout.write(
-                    '\rValidation: Epoch {}, Batch {}, train loss: {}'.format(epoch, batch, round(loss_all / batch, 4)))
-                sys.stdout.flush()
-            sys.stdout.write('\n')
+                print('\rValidation accuracy: {}%'.format(round(acc * 100, 2)))
