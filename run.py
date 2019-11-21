@@ -55,7 +55,15 @@ if __name__ == '__main__':
             # Compute Loss
             loss = criterion(y_pred.squeeze(), local_labels)
             loss_all += loss.item()
-            sys.stdout.write('\rEpoch {}, Batch {}, train loss: {}'.format(epoch, batch, round(loss_all / batch, 4)))
+
+            t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold
+            out = (y_pred > t)
+            out = out.cpu().numpy().flatten()
+            local_labels = local_labels.cpu().numpy()
+
+            acc = (out == local_labels).sum() / len(local_labels)
+
+            sys.stdout.write('\rEpoch {}, Batch {}, train loss: {}, acc: {}'.format(epoch, batch, round(loss_all / batch, 4), round(acc * 100, 2)))
             sys.stdout.flush()
             # Backward pass
             loss.backward()
