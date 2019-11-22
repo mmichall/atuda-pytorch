@@ -26,12 +26,12 @@ class AmazonDomainDataSet(dataset.Dataset):
         return [getattr(tuple, 'Index') for tuple in self.data.itertuples() if tuple.is_labeled]
 
     def summary(self, name):
-        print("\n___________________________")
+        print("\n___________________________________________________")
         print("> \t {} data set summary \t ".format(name))
         print("> \t Labeled examples count: {} \t ".format(len(self.labeled_indxs)))
         print("> \t Unlabeled examples count: {} \t ".format(len(self.data) - len(self.labeled_indxs)))
         print("> \t Dict length: {} \t ".format(len(self.dict)))
-        print("___________________________")
+        print("___________________________________________________")
 
 
 class AmazonDomainSubset(dataset.Dataset):

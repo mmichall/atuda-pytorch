@@ -1,15 +1,21 @@
 from torch.autograd import Variable
+from torch.nn.modules.loss import BCELoss
 
 import config
 import torch
 import sys
 from torch.utils.data import DataLoader
-from nn.model import Feedforward
+
+from nn.loss import MultiViewLoss
+from nn.model import Feedforward, ATTFeedforward
 from data_set import AmazonDomainDataSet, AmazonDomainSubset
 from helper.data import train_valid_split, build_dictionary
-from nn.trainer import Trainer
+from nn.trainer import DomainAdaptationTrainer
 
 if __name__ == '__main__':
+
+    print('SOURCE domain: {}'.format(config.SOURCE_DOMAIN))
+    print('TARGET domain: {}'.format(config.TARGET_DOMAIN))
 
     src_domain_data_set = AmazonDomainDataSet(config.SOURCE_DOMAIN)
     tgt_domain_data_set = AmazonDomainDataSet(config.TARGET_DOMAIN)
@@ -34,16 +40,18 @@ if __name__ == '__main__':
               'num_workers': 1}
 
     params_valid = {'batch_size': len(valid_subset)}
+    tgt_domain_params_valid = {'batch_size': len(tgt_domain_data_set)}
     max_epochs = 100
 
     # Generators
     training_generator = DataLoader(train_subset, **params)
     validation_generator = DataLoader(valid_subset, **params_valid)
+    tgt_domain_validation_generator = DataLoader(tgt_domain_data_set, **tgt_domain_params_valid)
 
-    model = Feedforward(5000, 100)
+    model = ATTFeedforward(5000, 50)
 
-    criterion = torch.nn.BCELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+    criterion = MultiViewLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.005)
 
-    trainer = Trainer(model, criterion, optimizer, max_epochs)
-    trainer.fit(training_generator, validation_generator)
+    trainer = DomainAdaptationTrainer(model, criterion, optimizer, max_epochs)
+    trainer.fit(training_generator, validation_generator, tgt_domain_validation_generator)
