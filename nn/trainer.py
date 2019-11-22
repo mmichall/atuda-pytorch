@@ -31,10 +31,10 @@ class DomainAdaptationTrainer:
                 # Model computations
                 self.optimizer.zero_grad()
                 # Forward pass
-                f1, f2, w1, w2, ft = self.model(local_batch)
+                f1, f2, ft = self.model(local_batch)
                 # Compute Loss
                 # f1_out, f2_out, w1, w2, y, _del
-                loss = self.criterion(f1, f2, w1, w2, local_labels, 0.01)
+                loss = self.criterion(f1, f2, self.model.f1.weight, self.model.f2.weight, local_labels, 0.01)
                 loss_all += loss.item()
 
                 # t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold

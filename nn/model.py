@@ -57,6 +57,6 @@ class ATTFeedforward(torch.nn.Module):
         ft_relu = self.ft_relu(ft_hidden)
         #Ft_softmax = self.f1_softmax(Ft_relu)
 
-        return f1_relu, f2_relu, self.f1.weight, self.f2.weight, ft_relu
+        return f1_relu, f2_relu, ft_relu
 
 
