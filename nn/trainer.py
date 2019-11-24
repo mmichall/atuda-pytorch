@@ -1,86 +1,110 @@
 import sys
+import copy
 
 import torch
+import numpy as np
+from tqdm import tqdm
+from helper.data import doc2one_hot
 from torch.autograd import Variable
+from helper.measure import acc
+from torch.utils.data import DataLoader
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
-torch.cuda.set_device(device)
+
+
+# torch.cuda.set_device(device)
 
 
 class DomainAdaptationTrainer:
 
-    def __init__(self, model, criterion, optimizer, max_epochs):
+    def __init__(self, model, criterion, criterion_t, optimizer, max_epochs):
         self.model = model
         self.criterion = criterion
+        self.criterion_t = criterion_t
         self.optimizer = optimizer
         self.max_epochs = max_epochs
         self.model.to(device)
 
-    def fit(self, training_generator, validation_generator, tgt_domain_validation_generator):
+    def fit(self, training_generator, validation_generator, target_generator):
+        self._fit(training_generator, validation_generator, target_generator, self.max_epochs)
+        torch.save(self.model.state_dict(), 'tmp/model.pkl')
+        # self.model.load_state_dict(torch.load('tmp/model.pkl'))
+
+        # pseudo labeling
+        batch_num = 0
+        wrong_target = 0
+        for idx, batch_one_hot, labels in target_generator:
+            batch_num += 1
+            # Transfer to GPU
+            batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
+
+            f1, f2, ft = self.model(batch_one_hot)
+            t = Variable(torch.FloatTensor([0.5]))  # threshold
+            out1 = (f1 > t)
+            out2 = (f2 > t)
+
+            for i in tqdm(range(0, len(out1))):
+                if out1[i] == out2[i]:
+                    item = copy.deepcopy(target_generator.dataset.get(i))
+                    if item.sentiment != out1[i][0]:
+                        wrong_target += 1
+                    item.sentiment = np.int64(out1[i][0])
+                    training_generator.dataset.append(item)
+        print('Wrong labeled: {} on {}'.format(wrong_target, len(target_generator)))
+        # Step 2
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
+        self._fit(training_generator, target_generator, max_epochs=5)
+
+    def _fit(self, data_loader: DataLoader, validation_loader: DataLoader, target_generator: DataLoader = None, max_epochs=10):
         # Loop over epochs
-        for epoch in range(self.max_epochs):
+
+        for epoch in range(max_epochs):
             # Training
-            batch = 0
+            batch_num = 0
             loss_all = 0
-            for local_batch, local_labels in training_generator:
-                batch += 1
+            _acc_all = 0
+            for idx, batch_one_hot, labels in data_loader:
+                batch_num += 1
                 # Transfer to GPU
-                local_batch, local_labels = local_batch.to(device, torch.float), local_labels.to(device, torch.float)
+                batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
 
                 # Model computations
                 self.optimizer.zero_grad()
                 # Forward pass
-                f1, f2, ft = self.model(local_batch)
+                f1, f2, ft = self.model(batch_one_hot)
                 # Compute Loss
                 # f1_out, f2_out, w1, w2, y, _del
-                loss = self.criterion(f1, f2, self.model.f1.weight, self.model.f2.weight, local_labels, 0.01)
+                loss = self.criterion(f1, f2, ft, self.model.f1_1.weight, self.model.f2_1.weight, labels, 0.01)
+                loss_t = self.criterion_t(ft, labels)
                 loss_all += loss.item()
 
-                # t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold
-                # out = (y_pred > t)
-                # out = out.cpu().numpy().flatten()
-                # local_labels = local_labels.cpu().numpy()
+                _acc = acc(ft, labels)
+                _acc_all += _acc
 
-                # acc = (out == local_labels).sum() / len(local_labels)
-
-                sys.stdout.write('\r### Epoch {}, Batch {}, train loss: {} ###'.format(epoch, batch, loss.item()))
+                sys.stdout.write('\r### Epoch {}, Batch {}, train loss: {} , acc: {} ###'.format(epoch, batch_num,
+                                                                                       round(loss_all / batch_num, 4),
+                                                                                       round(_acc_all / batch_num, 4)))
                 sys.stdout.flush()
                 # Backward pass
-                loss.backward()
+                loss.backward(retain_graph=True)
+                loss_t.backward()
                 self.optimizer.step()
 
             sys.stdout.write('\n')
+            self.valid(validation_loader, target_generator)
 
-            # # Validation
-            # acc = 0
-            # with torch.set_grad_enabled(False):
-            #     for local_batch, local_labels in validation_generator:
-            #         # Transfer to GPU
-            #         local_batch = local_batch.to(device, torch.float)
-            #
-            #         # Model computations
-            #         y_pred = self.model(local_batch)
-            #         t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold
-            #         out = (y_pred > t)
-            #         out = out.cpu().numpy().flatten()
-            #         local_labels = local_labels.cpu().numpy()
-            #
-            #         acc = (out == local_labels).sum() / len(local_labels)
-            #         acc = round(acc * 100, 2)
-            #
-            #     for local_batch, local_labels in tgt_domain_validation_generator:
-            #         # Transfer to GPU
-            #         local_batch = local_batch.to(device, torch.float)
-            #
-            #         # Model computations
-            #         y_pred = self.model(local_batch)
-            #         t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold
-            #         out = (y_pred > t)
-            #         out = out.cpu().numpy().flatten()
-            #         local_labels = local_labels.cpu().numpy()
-            #
-            #         acc_tgt_dmn = (out == local_labels).sum() / len(local_labels)
-            #         acc_tgt_dmn = round(acc_tgt_dmn * 100, 2)
-            #
-            #         print('\r src_dmn_val_acc: {}% \n tgt_dmn_val_acc: {}%\n'.format(acc, acc_tgt_dmn))
+    def valid(self, data_loader, data_loader_2=None):
+        with torch.set_grad_enabled(False):
+            for idx, local_batch, local_labels in data_loader:
+                local_batch = local_batch.to(device, torch.float)
+                f1, f2, ft = self.model(local_batch)
+                _acc = round(acc(ft, local_labels) * 100, 2)
+            if data_loader_2 is not None:
+                for idx, local_batch, local_labels in data_loader_2:
+                    local_batch = local_batch.to(device, torch.float)
+                    f1, f2, ft = self.model(local_batch)
+                    _acc_tgt = round(acc(ft, local_labels) * 100, 2)
+                print('\r acc SOURCE_VALID: {}%, acc TARGET: {}%\n'.format(_acc, _acc_tgt))
+            else:
+                print('\r acc SOURCE_VALID: {}%'.format(_acc))
