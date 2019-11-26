@@ -1,5 +1,6 @@
 from torch.autograd import Variable
 from torch.nn.modules.loss import BCELoss
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import config
 import torch
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     params_valid = {'batch_size': len(valid_subset)}
     target_params_valid = {'batch_size': len(tgt_domain_data_set)}
 
-    max_epochs = 10
+    max_epochs = 100
 
     # Generators
     training_generator = DataLoader(train_subset, **params)
@@ -53,6 +54,7 @@ if __name__ == '__main__':
     criterion = MultiViewLoss()
     criterion_t = BCELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.02)
+    scheduler = ReduceLROnPlateau(optimizer, factor=0.2, patience=3)
 
-    trainer = DomainAdaptationTrainer(model, criterion, BCELoss(), optimizer, max_epochs)
+    trainer = DomainAdaptationTrainer(model, criterion, BCELoss(), optimizer, scheduler, max_epochs)
     trainer.fit(training_generator, validation_generator, target_generator)
