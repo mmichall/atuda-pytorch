@@ -19,7 +19,7 @@ class AmazonDomainDataSet(dataset.Dataset):
 
     def __getitem__(self, index):
         item = self.data.loc[index]
-        return index, doc2one_hot(item.acl_processed, self.dict), item.sentiment
+        return index, doc2one_hot(item.acl_processed, self.dict), item.sentiment, item.src
 
     def get(self, index):
         return self.data.iloc[index]
