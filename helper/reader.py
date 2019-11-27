@@ -11,18 +11,19 @@ class AmazonDomainDataReader:
     def read(domain: str, is_labeled) -> pd.DataFrame:
         data = {'acl_processed': [], 'sentiment': [], 'src': []}
 
-        _path = path.join(config.DATA_PATH, domain)
-        data_fls = AmazonDomainDataReader.labeled_data_fls if is_labeled else AmazonDomainDataReader.unlabeled_data_fls
-        for file in data_fls:
-            with open(path.join(_path, file), 'r') as f:
-                content = f.readlines()
+        if domain is not None:
+            _path = path.join(config.DATA_PATH, domain)
+            data_fls = AmazonDomainDataReader.labeled_data_fls if is_labeled else AmazonDomainDataReader.unlabeled_data_fls
+            for file in data_fls:
+                with open(path.join(_path, file), 'r') as f:
+                    content = f.readlines()
 
-            for line in content:
-                line = line.split()
-                x = [tuple(x.split(':')) for x in line[:-1]]
-                y = line[-1].split(':')[1]
-                data['acl_processed'].append(x)
-                data['sentiment'].append(1 if 'positive' == y else 0)
-                data['src'].append(1 if is_labeled else 0)
+                for line in content:
+                    line = line.split()
+                    x = [tuple(x.split(':')) for x in line[:-1]]
+                    y = line[-1].split(':')[1]
+                    data['acl_processed'].append(x)
+                    data['sentiment'].append(1 if 'positive' == y else 0)
+                    data['src'].append(1 if is_labeled else 0)
 
         return pd.DataFrame(data)

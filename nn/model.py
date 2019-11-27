@@ -1,4 +1,5 @@
 import torch
+from torch.nn import BatchNorm1d
 
 
 class Feedforward(torch.nn.Module):
@@ -27,44 +28,53 @@ class ATTFeedforward(torch.nn.Module):
 
         self.f = torch.nn.Linear(self.input_size, self.hidden_size)
         self.f_relu = torch.nn.ReLU()
-       # self.f_softmax = torch.nn.Softmax()
+        self.f_dropout = torch.nn.Dropout(p=0.5)
+        self.f_batchnorm = torch.nn.BatchNorm1d(50)
+        # self.f_softmax = torch.nn.Softmax()
 
         self.f1_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.f1_1_relu = torch.nn.ReLU()
+        self.f1_dropout = torch.nn.Dropout(p=0.2)
+        self.f1_batchnorm = BatchNorm1d(50)
         self.f1_2 = torch.nn.Linear(self.hidden_size, 1)
         self.f1_2_softmax = torch.nn.Sigmoid()
 
         self.f2_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.f2_1_relu = torch.nn.ReLU()
+        self.f2_dropout = torch.nn.Dropout(p=0.2)
+        self.f2_batchnorm = BatchNorm1d(50)
         self.f2_2 = torch.nn.Linear(self.hidden_size, 1)
         self.f2_2_softmax = torch.nn.Sigmoid()
 
         self.f3_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.f3_1_relu = torch.nn.ReLU()
+        self.f3_dropout = torch.nn.Dropout(p=0.2)
+        self.f3_batchnorm = BatchNorm1d(50)
         self.f3_2 = torch.nn.Linear(self.hidden_size, 1)
         self.f3_2_softmax = torch.nn.Sigmoid()
-
-        self.ft = torch.nn.Linear(self.hidden_size, self.hidden_size)
-        self.ft_relu = torch.nn.ReLU()
-        self.ft_softmax = torch.nn.Softmax()
 
     def forward(self, x):
         f_hidden = self.f(x)
         f_relu = self.f_relu(f_hidden)
+        f_relu = self.f_dropout(f_relu)
+       # f_relu = self.f_batchnorm(f_relu)
 
-        # output = self.f1_1(f_relu)
-        # output = self.f1_1_relu(output)
-        output = self.f1_2(f_relu)
+        output = self.f1_1(f_relu)
+        output = self.f1_1_relu(output)
+        output = self.f1_dropout(output)
+        output = self.f1_2(output)
         output1 = self.f1_2_softmax(output)
         #F1_softmax = self.f1_softmax(F1_relu)
 
         output = self.f2_1(f_relu)
         output = self.f2_1_relu(output)
+        output = self.f2_dropout(output)
         output = self.f2_2(output)
         output2 = self.f2_2_softmax(output)
 
         output = self.f3_1(f_relu)
         output = self.f3_1_relu(output)
+        output = self.f3_dropout(output)
         output = self.f3_2(output)
         output3 = self.f3_2_softmax(output)
 

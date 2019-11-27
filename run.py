@@ -40,14 +40,12 @@ if __name__ == '__main__':
               'shuffle': True,
               'num_workers': 4}
     params_valid = {'batch_size': len(valid_subset)}
-    target_params_valid = {'batch_size': len(tgt_domain_data_set)}
 
     max_epochs = 100
 
     # Generators
     training_generator = DataLoader(train_subset, **params)
     validation_generator = DataLoader(valid_subset, **params_valid)
-    target_generator = DataLoader(tgt_domain_data_set, **target_params_valid)
 
     model = ATTFeedforward(5000, 50)
 
@@ -57,4 +55,4 @@ if __name__ == '__main__':
     scheduler = ReduceLROnPlateau(optimizer, factor=0.2, patience=3)
 
     trainer = DomainAdaptationTrainer(model, criterion, BCELoss(), optimizer, scheduler, max_epochs)
-    trainer.fit(training_generator, validation_generator, target_generator)
+    trainer.fit(training_generator, validation_generator, tgt_domain_data_set, dictionary)
