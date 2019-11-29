@@ -29,9 +29,9 @@ class DomainAdaptationTrainer:
         self.model.to(device)
 
     def fit(self, training_generator, validation_generator, target_data_set, dict):
-        #target_generator = DataLoader(target_data_set, **{'batch_size': len(target_data_set)})
-        #self._fit(training_generator, validation_generator, target_generator, self.max_epochs)
-        #torch.save(self.model.state_dict(), 'tmp/model.pkl')
+        # target_generator = DataLoader(target_data_set, **{'batch_size': len(target_data_set)})
+        # self._fit(training_generator, validation_generator, target_generator, self.max_epochs)
+        # torch.save(self.model.state_dict(), 'tmp/model.pkl')
         self.model.load_state_dict(torch.load('tmp/model.pkl'))
 
         params = {'batch_size': 8,
@@ -45,10 +45,10 @@ class DomainAdaptationTrainer:
         _tgt_len = len(target_data_set)
 
         wrong_target = 0
-        for _i in range(1, 21):
+        for _i in range(1, 16):
             batch_num = 0
 
-            _len = int((_i / 10) * _tgt_len)
+            _len = int((_i / 15) * _tgt_len)
             target_data_set.length = _tgt_len
             target_generator = DataLoader(target_data_set, **{'batch_size': _tgt_len, 'shuffle': True})
             with torch.set_grad_enabled(False):
@@ -56,6 +56,7 @@ class DomainAdaptationTrainer:
                 idxs_to_remove = []
                 for idx, batch_one_hot, labels, src in target_generator:
                     batch_num += 1
+
                     # Transfer to GPU
                     labels = torch.stack(labels, dim=1)
                     batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
@@ -95,7 +96,7 @@ class DomainAdaptationTrainer:
             self._fit(training_tgt_data_loader, target_generator, max_epochs=20, is_step2=True)
 
     def _fit(self, data_loader: DataLoader, validation_loader: DataLoader, target_generator: DataLoader = None,
-             max_epochs=10, is_step2=False):
+             max_epochs=10, src_data_loader: DataLoader = None, is_step2=False):
         self.model.train()
         # Loop over epochs
         epochs_no_improve = 4
@@ -106,8 +107,6 @@ class DomainAdaptationTrainer:
             # Training
             batch_num = 0
             loss_all = 0
-            loss_all1 = 0
-            loss_all2 = 0
             _acc_all = 0
             _acc_all1 = 0
             _acc_all2 = 0

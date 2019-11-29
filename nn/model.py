@@ -1,5 +1,6 @@
 import torch
 from torch.nn import BatchNorm1d
+from torch import nn
 
 
 class Feedforward(torch.nn.Module):
@@ -83,5 +84,34 @@ class ATTFeedforward(torch.nn.Module):
         # #Ft_softmax = self.f1_softmax(Ft_relu)
 
         return output1, output2, output3
+
+
+class Autoencoder(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(Autoencoder, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
+        self.encoder = nn.Sequential(
+            nn.Linear(28 * 28, 128),
+            nn.ReLU(True),
+            nn.Linear(128, 64),
+            nn.ReLU(True),
+            nn.Linear(64, 12),
+            nn.ReLU(True),
+            nn.Linear(12, 3))
+        self.decoder = nn.Sequential(
+            nn.Linear(3, 12),
+            nn.ReLU(True),
+            nn.Linear(12, 64),
+            nn.ReLU(True),
+            nn.Linear(64, 128),
+            nn.ReLU(True), nn.Linear(128, 28 * 28), nn.Tanh())
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
 
 
