@@ -28,8 +28,8 @@ class AmazonDomainDataSet(dataset.Dataset):
     def get_labeled_indxs(self):
         return [getattr(tuple, 'Index') for tuple in self.data.itertuples() if tuple.is_labeled]
 
-    def append(self, item, idx):
-        item.name = idx
+    def append(self, item):
+        item.name = self.length
         self.data = self.data.append(item)
         self.length = len(self.data)
 

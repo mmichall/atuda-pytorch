@@ -23,7 +23,7 @@ class AmazonDomainDataReader:
                     x = [tuple(x.split(':')) for x in line[:-1]]
                     y = line[-1].split(':')[1]
                     data['acl_processed'].append(x)
-                    data['sentiment'].append(1 if 'positive' == y else 0)
+                    data['sentiment'].append((1, 0) if 'positive' == y else (0, 1))
                     data['src'].append(1 if is_labeled else 0)
 
         return pd.DataFrame(data)
