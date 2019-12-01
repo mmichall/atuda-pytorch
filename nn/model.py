@@ -86,27 +86,30 @@ class ATTFeedforward(torch.nn.Module):
         return output1, output2, output3
 
 
-class Autoencoder(nn.Module):
+class AE_ATTFeedForward(nn.Module):
     def __init__(self, input_size, hidden_size):
-        super(Autoencoder, self).__init__()
+        super(AE_ATTFeedForward, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        torch.load('tmp/model.pkl')
+        self.endocer_state_dict = torch.load('tmp/ae_model.pkl')
+        for item in self.endocer_state_dict.items():
+            print(item)
+        pretrained_dict = {k: v for k, v in self.endocer_state_dict.items() if k in []}
+
+
+class SimpleAutoencoder(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(SimpleAutoencoder, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
 
         self.encoder = nn.Sequential(
-            nn.Linear(28 * 28, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 64),
-            nn.ReLU(True),
-            nn.Linear(64, 12),
-            nn.ReLU(True),
-            nn.Linear(12, 3))
+            nn.Linear(self.input_size,  self.hidden_size),
+            nn.ReLU(True))
         self.decoder = nn.Sequential(
-            nn.Linear(3, 12),
-            nn.ReLU(True),
-            nn.Linear(12, 64),
-            nn.ReLU(True),
-            nn.Linear(64, 128),
-            nn.ReLU(True), nn.Linear(128, 28 * 28), nn.Tanh())
+            nn.Linear(self.hidden_size, self.input_size),
+            nn.Sigmoid())
 
     def forward(self, x):
         x = self.encoder(x)

@@ -8,7 +8,7 @@ import sys
 from torch.utils.data import DataLoader
 
 from nn.loss import MultiViewLoss
-from nn.model import Feedforward, ATTFeedforward
+from nn.model import Feedforward, ATTFeedforward, AE_ATTFeedForward
 from data_set import AmazonDomainDataSet, AmazonSubsetWrapper
 from helper.data import train_valid_split, build_dictionary
 from nn.trainer import DomainAdaptationTrainer

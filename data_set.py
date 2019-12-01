@@ -1,5 +1,4 @@
 from typing import List
-import numpy as np
 from torch.utils.data import dataset
 import pandas as pd
 
@@ -20,7 +19,7 @@ class AmazonDomainDataSet(dataset.Dataset):
 
     def __getitem__(self, index):
         item = self.data.loc[index]
-        return index, doc2one_hot(item.acl_processed, self.dict), item.sentiment, item.src
+        return index, doc2one_hot(item.acl_processed, self.dict), item.sentiment
 
     def get(self, index):
         return self.data.iloc[index]
@@ -31,6 +30,10 @@ class AmazonDomainDataSet(dataset.Dataset):
     def append(self, item):
         item.name = self.length
         self.data = self.data.append(item)
+        self.length = len(self.data)
+
+    def append_set(self, dataset):
+        self.data = self.data.append(dataset.data, ignore_index=True)
         self.length = len(self.data)
 
     def summary(self, name):
