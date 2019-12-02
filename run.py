@@ -8,7 +8,7 @@ import sys
 from torch.utils.data import DataLoader
 
 from nn.loss import MultiViewLoss
-from nn.model import Feedforward, ATTFeedforward, AE_ATTFeedForward
+from nn.model import Feedforward, ATTFeedforward, AE_ATTFeedForward, SimpleAutoencoder
 from data_set import AmazonDomainDataSet, AmazonSubsetWrapper
 from helper.data import train_valid_split, build_dictionary
 from nn.trainer import DomainAdaptationTrainer
@@ -47,12 +47,16 @@ if __name__ == '__main__':
     training_generator = DataLoader(train_subset, **params)
     validation_generator = DataLoader(valid_subset, **params_valid)
 
-    model = ATTFeedforward(5000, 50)
+    ae_model = SimpleAutoencoder(5000, 500)
+    ae_model.embedding_mode()
+    ae_model.load_state_dict(torch.load('tmp/ae_model_500.pkl'))
+    model = ATTFeedforward(250, 50)
 
     criterion = MultiViewLoss()
     criterion_t = BCELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.02)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     scheduler = ReduceLROnPlateau(optimizer, factor=0.2, patience=3)
 
-    trainer = DomainAdaptationTrainer(model, criterion, BCELoss(), optimizer, scheduler, max_epochs)
+    trainer = DomainAdaptationTrainer(ae_model, model, criterion, BCELoss(), optimizer, scheduler, max_epochs)
     trainer.fit(training_generator, validation_generator, tgt_domain_data_set, dictionary)
+

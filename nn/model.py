@@ -107,8 +107,12 @@ class SimpleAutoencoder(nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Linear(self.input_size,  self.hidden_size),
+            nn.ReLU(True),
+            nn.Linear(self.hidden_size,  250),
             nn.ReLU(True))
         self.decoder = nn.Sequential(
+            nn.Linear(250, self.hidden_size),
+            nn.ReLU(True),
             nn.Linear(self.hidden_size, self.input_size),
             nn.Sigmoid())
 
