@@ -47,9 +47,13 @@ class DomainAdaptationTrainer:
         # Pseudo labeling
         _tgt_len = len(target_data_set)
 
-        wrong_target = 0
         idxs_to_remove = []
         for _i in range(1, 16):
+            wrong_target = 0
+            ######################################
+            training_tgt_data_set = AmazonDomainDataSet()
+            training_tgt_data_set.dict = _dict
+            ######################################
             batch_num = 0
             _len = int((_i / 15) * _tgt_len)
             target_data_set.length = _tgt_len
@@ -64,7 +68,7 @@ class DomainAdaptationTrainer:
                     batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
 
                     f1, f2, ft = self.model(batch_one_hot)
-                    t = Variable(torch.FloatTensor([0.5]))  # threshold
+                    t = Variable(torch.cuda.FloatTensor([0.5]))  # threshold
                     out1 = (f1 > t)
                     out2 = (f2 > t)
                     outt = (ft > t)
@@ -86,18 +90,17 @@ class DomainAdaptationTrainer:
                                 wrong_target += 1
                             item.sentiment = outt[i].cpu().numpy()
                             training_tgt_data_set.append(item)
-                            idxs_to_remove.append(_idx[i])
+                            #idxs_to_remove.append(_idx[i])
                             if len(training_tgt_data_set) == _len:
                                 break
 
             training_tgt_data_loader = DataLoader(training_tgt_data_set, **params)
-            print('Wrong labeled: {} on {}'.format(wrong_target, len(idxs_to_remove)))
+            print('Wrong labeled: {} on {}'.format(wrong_target, len(training_tgt_data_set)))
 
-        # Step 2
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.02)
-        self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=3)
-        self._fit(training_tgt_data_loader, target_generator, max_epochs=20, is_step2=True)
-
+            # Step 2
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.02)
+            self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=3)
+            self._fit(training_tgt_data_loader, target_generator, max_epochs=20, is_step2=True)
 
     def _fit(self, data_loader: DataLoader, validation_loader: DataLoader, target_generator: DataLoader = None,
              max_epochs=10, src_data_loader: DataLoader = None, is_step2=False, _dict=None):
@@ -163,15 +166,7 @@ class DomainAdaptationTrainer:
 
                     sys.stdout.write(
                         '\r### Epoch {}, Batch {}, train loss: {} F1 acc: {} ### | ### F2 acc: {} ###'.format(
-                            epoch,
-                            batch_num,
-                            _loss_mean,
-                            round(
-                                mean(_acc_all1),
-                                4),
-                            round(
-                                mean(_acc_all2),
-                                4)
+                            epoch, batch_num, _loss_mean, round(mean(_acc_all1), 4), round(mean(_acc_all2), 4)
                         ))
 
                     sys.stdout.flush()
@@ -194,7 +189,6 @@ class DomainAdaptationTrainer:
                 n_epochs_stop = 0
                 _prev_metric = _valid_acc
 
-
     def valid(self, data_loader, data_loader_2=None):
         with torch.set_grad_enabled(False):
             self.model.eval()
@@ -211,8 +205,8 @@ class DomainAdaptationTrainer:
                     local_batch = local_batch.to(device, torch.float)
                     f1, f2, ft = self.model(local_batch)
                     _acc_all_tgt.append(acc(ft, local_labels))
-                print('\r acc SOURCE_VALID: {}, acc TARGET: {}\n'.format(mean(_acc_all), mean(_acc_all_tgt)))
+                print('\r acc SOURCE_VALID: {}, acc TARGET: {}\n'.format(round(mean(_acc_all), 4), round(mean(_acc_all_tgt), 4)))
             else:
-                print('\r acc SOURCE_VALID: {}'.format(mean(_acc_all)))
+                print('\r acc SOURCE_VALID: {}'.format(round(mean(_acc_all)), 4))
 
             return mean(_acc_all)

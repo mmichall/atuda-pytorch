@@ -54,7 +54,7 @@ if __name__ == '__main__':
         _batch = 0
         prev_loss = 999
         print('Epoch: ' + str(epoch))
-        for idx, batch_one_hot, labels, src in data_set_generator:
+        for idx, batch_one_hot, labels in data_set_generator:
             _batch += 1
             labels = torch.stack(labels, dim=1)
             batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
