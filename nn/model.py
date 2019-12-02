@@ -103,6 +103,7 @@ class SimpleAutoencoder(nn.Module):
         super(SimpleAutoencoder, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.train_mode = True
 
         self.encoder = nn.Sequential(
             nn.Linear(self.input_size,  self.hidden_size),
@@ -111,9 +112,16 @@ class SimpleAutoencoder(nn.Module):
             nn.Linear(self.hidden_size, self.input_size),
             nn.Sigmoid())
 
+    def train_mode(self):
+        self.train_mode = True
+
+    def embedding_mode(self):
+        self.train_mode = False
+
     def forward(self, x):
         x = self.encoder(x)
-        x = self.decoder(x)
+        if self.train_mode:
+            x = self.decoder(x)
         return x
 
 

@@ -48,38 +48,43 @@ if __name__ == '__main__':
     epochs_no_improve = 3
     n_epochs_stop = 0
 
-    model.train()
+    model.embedding_mode()
+
+    #model.train()
     for epoch in range(max_epochs):
         _loss = 0
         _batch = 0
         prev_loss = 999
         print('Epoch: ' + str(epoch))
         for idx, batch_one_hot, labels in data_set_generator:
-            _batch += 1
             labels = torch.stack(labels, dim=1)
             batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
-            optimizer.zero_grad()
-
-            out = model(batch_one_hot.cpu())
-
-            loss = criterion(out, batch_one_hot)
-
-            _loss += loss.item()
-            _loss_mean = round(_loss / _batch, 4)
-            sys.stdout.write('\r MSE Error: ' + str(_loss_mean))
-            loss.backward()
-            optimizer.step()
-        if prev_loss <= _loss_mean:
-            n_epochs_stop += 1
-        else:
-            n_epochs_stop = 0
-            prev_loss = _loss_mean
-
-        if n_epochs_stop == epochs_no_improve:
-            print('Early Stopping!')
-            break
-
-        print('')
-    torch.save(model.state_dict(), 'tmp/ae_model.pkl')
+            print(model(batch_one_hot.cpu()).size())
+        #     _batch += 1
+        #     labels = torch.stack(labels, dim=1)
+        #     batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
+        #     optimizer.zero_grad()
+        #
+        #     out = model(batch_one_hot.cpu())
+        #
+        #     loss = criterion(out, batch_one_hot.cpu())
+        #
+        #     _loss += loss.item()
+        #     _loss_mean = round(_loss / _batch, 4)
+        #     sys.stdout.write('\r MSE Error: ' + str(_loss_mean))
+        #     loss.backward()
+        #     optimizer.step()
+        # if prev_loss <= _loss_mean:
+        #     n_epochs_stop += 1
+        # else:
+        #     n_epochs_stop = 0
+        #     prev_loss = _loss_mean
+        #
+        # if n_epochs_stop == epochs_no_improve:
+        #     print('Early Stopping!')
+        #     break
+        #
+        # print('')
+    # torch.save(model.state_dict(), 'tmp/ae_model.pkl')
 
 
