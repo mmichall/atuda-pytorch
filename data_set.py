@@ -1,3 +1,5 @@
+import copy
+import random
 from typing import List
 from torch.utils.data import dataset
 import pandas as pd
@@ -8,10 +10,11 @@ from helper.reader import AmazonDomainDataReader
 
 class AmazonDomainDataSet(dataset.Dataset):
 
-    def __init__(self, domain: str=None, is_labeled=False):
+    def __init__(self, domain: str=None, is_labeled=False, denoising_factor=0.):
         self.domain = domain
         self.data: pd.DataFrame = AmazonDomainDataReader.read(domain, is_labeled)
         self.dict = {}
+        self.denoising_factor = denoising_factor
         self.length = len(self.data)
 
     def __len__(self):
@@ -19,7 +22,16 @@ class AmazonDomainDataSet(dataset.Dataset):
 
     def __getitem__(self, index):
         item = self.data.loc[index]
-        return index, doc2one_hot(item.acl_processed, self.dict), item.sentiment
+        _doc2one_hot = doc2one_hot(item.acl_processed, self.dict)
+
+        if self.denoising_factor != 0.0:
+            _denoised = copy.deepcopy(_doc2one_hot)
+            for i in range(len(_denoised)):
+                if random.random() < self.denoising_factor:
+                    _denoised[i] = 0
+            return index, _denoised, _doc2one_hot
+
+        return index, _doc2one_hot, item.sentiment
 
     def get(self, index):
         return self.data.iloc[index]

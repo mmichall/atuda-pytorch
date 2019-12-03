@@ -1,3 +1,4 @@
+import random
 import sys
 
 import config
@@ -27,6 +28,7 @@ if __name__ == '__main__':
 
     data_set = merge([src_domain_data_set, tgt_domain_data_set])
     data_set.dict = dictionary
+    data_set.denoising_factor = 0.5
 
     data_set.summary('data_set')
 
@@ -34,10 +36,9 @@ if __name__ == '__main__':
               'shuffle': True,
               'num_workers': 1}
 
-    max_epochs = 10
+    max_epochs = 15
 
     # Generators
-    training_generator = DataLoader(src_domain_data_set, **params)
     data_set_generator = DataLoader(data_set, **params)
 
     model = SimpleAutoencoder(5000, 500)
@@ -61,13 +62,13 @@ if __name__ == '__main__':
             # batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
             # print(model(batch_one_hot.cpu()).size())
             _batch += 1
-            labels = torch.stack(labels, dim=1)
+            #labels = torch.stack(labels, dim=1)
             batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
             optimizer.zero_grad()
 
             out = model(batch_one_hot.cpu())
 
-            loss = criterion(out, batch_one_hot.cpu())
+            loss = criterion(out, labels.cpu())
 
             _loss += loss.item()
             _loss_mean = round(_loss / _batch, 4)
@@ -85,6 +86,6 @@ if __name__ == '__main__':
             break
 
         print('')
-    torch.save(model.state_dict(), 'tmp/ae_model_500.pkl')
+    torch.save(model.state_dict(), 'tmp/dae_model_500.pkl')
 
 

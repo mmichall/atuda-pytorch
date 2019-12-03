@@ -49,8 +49,8 @@ if __name__ == '__main__':
 
     ae_model = SimpleAutoencoder(5000, 500)
     ae_model.embedding_mode()
-    ae_model.load_state_dict(torch.load('tmp/ae_model_500.pkl'))
-    model = ATTFeedforward(250, 50)
+    ae_model.load_state_dict(torch.load('tmp/dae_model_500.pkl'))
+    model = ATTFeedforward(5250, 50)
 
     criterion = MultiViewLoss()
     criterion_t = BCELoss()

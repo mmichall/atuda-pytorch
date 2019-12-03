@@ -34,9 +34,9 @@ class DomainAdaptationTrainer:
 
     def fit(self, training_generator, validation_generator, target_data_set, _dict):
         target_generator = DataLoader(target_data_set, **{'batch_size': len(target_data_set)})
-        #self._fit(training_generator, validation_generator, target_generator, self.max_epochs, _dict=_dict)
-        #torch.save(self.model.state_dict(), 'tmp/model_5000_100.pt')
-        self.model.load_state_dict(torch.load('tmp/model_5000_100.pt'))
+        self._fit(training_generator, validation_generator, target_generator, self.max_epochs, _dict=_dict)
+        torch.save(self.model.state_dict(), 'tmp/model_5000+250.pt')
+        #self.model.load_state_dict(torch.load('tmp/model_5000_100.pt'))
 
         params = {'batch_size': 8,
                   'shuffle': False,
@@ -136,11 +136,12 @@ class DomainAdaptationTrainer:
                 if type(labels) == list:
                     labels = torch.stack(labels, dim=1)
                 batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
-                batch_one_hot = self.ae_model(batch_one_hot)
+                ae_output = self.ae_model(batch_one_hot.cpu())
+                ae_output = ae_output.to(device, torch.float)
                 # Model computations
                 self.optimizer.zero_grad()
                 # Forward pass
-                f1, f2, ft = self.model(batch_one_hot)
+                f1, f2, ft = self.model(torch.cat([batch_one_hot, ae_output], 1))
                 # Compute Loss
                 # f1_out, f2_out, w1, w2, y, _del
                 loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels, 0.00001)
@@ -200,15 +201,17 @@ class DomainAdaptationTrainer:
             for idx, local_batch, local_labels in data_loader:
                 local_labels = torch.stack(local_labels, dim=1)
                 local_batch = local_batch.to(device, torch.float)
-                local_batch = self.ae_model(local_batch)
-                f1, f2, ft = self.model(local_batch)
+                ae_output = self.ae_model(local_batch.cpu())
+                ae_output = ae_output.to(device)
+                f1, f2, ft = self.model(torch.cat([local_batch, ae_output], 1))
                 _acc_all.append(acc(ft, local_labels))
             if data_loader_2 is not None:
                 for idx, local_batch, local_labels in data_loader_2:
                     local_labels = torch.stack(local_labels, dim=1)
                     local_batch = local_batch.to(device, torch.float)
-                    local_batch = self.ae_model(local_batch)
-                    f1, f2, ft = self.model(local_batch)
+                    ae_output = self.ae_model(local_batch.cpu())
+                    ae_output = ae_output.to(device)
+                    f1, f2, ft = self.model(torch.cat([local_batch, ae_output], 1))
                     _acc_all_tgt.append(acc(ft, local_labels))
                 print('\r acc SOURCE_VALID: {}, acc TARGET: {}\n'.format(round(mean(_acc_all), 4), round(mean(_acc_all_tgt), 4)))
             else:
