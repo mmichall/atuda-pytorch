@@ -5,20 +5,57 @@ import random
 import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from tqdm import tqdm
 from torch.autograd import Variable
 
-from data_set import AmazonDomainDataSet, AmazonSubsetWrapper
+from data_set import AmazonDomainDataSet
 from helper.measure import acc
 from torch.utils.data import DataLoader
-
-from helper.data import doc2one_hot
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
-# torch.cuda.set_device(device)
+class AutoEncoderTrainer:
+    def __init__(self, model, criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
+        self.model = model
+        self.criterion = criterion
+        self.optimizer = optimizer
+        self.max_epochs = max_epochs
+        self.scheduler = scheduler
+        self.epochs_no_improve = 3
+
+    def fit(self, train_data_generator):
+        self.model.train()
+        for epoch in range(self.max_epochs):
+            _loss = 0
+            _batch = 0
+            prev_loss = 999
+            print('Epoch: ' + str(epoch))
+            for idx, inputs, labels in train_data_generator:
+                _batch += 1
+                inputs, labels = inputs.to(device, torch.float), labels.to(device, torch.float)
+                self.optimizer.zero_grad()
+
+                out = self.model(inputs)
+                loss = self.criterion(out, labels)
+
+                _loss += loss.item()
+                _loss_mean = round(_loss / _batch, 4)
+                sys.stdout.write('\r MSE Error: ' + str(_loss_mean))
+                loss.backward()
+                self.optimizer.step()
+            if prev_loss <= _loss_mean:
+                n_epochs_stop += 1
+            else:
+                n_epochs_stop = 0
+                prev_loss = _loss_mean
+
+            if n_epochs_stop == self.epochs_no_improve:
+                print('Early Stopping!')
+                break
+
+            print('')
+
 
 class DomainAdaptationTrainer:
 

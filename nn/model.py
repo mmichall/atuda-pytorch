@@ -1,26 +1,11 @@
 import random
-
+from torchsummary import summary
 import torch
 from torch.nn import BatchNorm1d
 from torch import nn
 
-
-class Feedforward(torch.nn.Module):
-    def __init__(self, input_size, hidden_size):
-        super(Feedforward, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.fc1 = torch.nn.Linear(self.input_size, self.hidden_size)
-        self.relu = torch.nn.ReLU()
-        self.fc2 = torch.nn.Linear(self.hidden_size, 1)
-        self.sigmoid = torch.nn.Sigmoid()
-
-    def forward(self, x):
-        hidden = self.fc1(x)
-        relu = self.relu(hidden)
-        output = self.fc2(relu)
-        output = self.sigmoid(output)
-        return output
+use_cuda = torch.cuda.is_available()
+device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
 class ATTFeedforward(torch.nn.Module):
@@ -56,6 +41,8 @@ class ATTFeedforward(torch.nn.Module):
         self.f3_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f3_2_softmax = torch.nn.Softmax()
 
+        self.to(device)
+
     def forward(self, x):
         output = self.f(x)
         output = self.f_relu(output)
@@ -88,40 +75,36 @@ class ATTFeedforward(torch.nn.Module):
         return output1, output2, output3
 
 
-class AE_ATTFeedForward(nn.Module):
-    def __init__(self, input_size, hidden_size):
-        super(AE_ATTFeedForward, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        torch.load('tmp/model.pkl')
-        self.endocer_state_dict = torch.load('tmp/ae_model.pkl')
-        for item in self.endocer_state_dict.items():
-            print(item)
-        pretrained_dict = {k: v for k, v in self.endocer_state_dict.items() if k in []}
-
-
-class SimpleAutoencoder(nn.Module):
-    def __init__(self, input_size, hidden_size):
-        super(SimpleAutoencoder, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
+class StackedAutoEncoder(nn.Module):
+    def __init__(self, shape: tuple):
+        super(StackedAutoEncoder, self).__init__()
         self.train_mode = True
 
-        self.encoder = nn.Sequential(
-            nn.Linear(self.input_size,  self.hidden_size),
-            nn.ReLU(True),
-            nn.Linear(self.hidden_size,  250),
-            nn.ReLU(True))
-        self.decoder = nn.Sequential(
-            nn.Linear(250, self.hidden_size),
-            nn.ReLU(True),
-            nn.Linear(self.hidden_size, self.input_size),
-            nn.Sigmoid())
+        self.encoder_modules = []
+        self.decoder_modules = []
+        for _i in range(len(shape)-1):
+            self.encoder_modules.append(nn.Linear(shape[_i], shape[_i+1]))
+            self.encoder_modules.append(nn.ReLU(True))
+
+        for _i in reversed(range(len(shape)-1)):
+            self.decoder_modules.append(nn.Linear(shape[_i+1], shape[_i]))
+            if _i != 0:
+                self.decoder_modules.append(nn.ReLU(True))
+            else:
+                self.decoder_modules.append(nn.Sigmoid())
+
+        self.encoder = nn.Sequential(*self.encoder_modules)
+        self.decoder = nn.Sequential(*self.decoder_modules)
+
+        self.to(device)
+
+        print('> AutoEncoder summary: ')
+        summary(self, input_size=(shape[0], ))
 
     def train_mode(self):
         self.train_mode = True
 
-    def embedding_mode(self):
+    def frozen(self):
         self.train_mode = False
 
     def forward(self, x):

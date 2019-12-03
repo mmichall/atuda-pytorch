@@ -5,7 +5,6 @@ import config
 import torch
 from torch.utils.data import DataLoader
 from torch.nn import MSELoss
-from nn.model import SimpleAutoencoder
 from data_set import AmazonDomainDataSet, AmazonSubsetWrapper
 from helper.data import train_valid_split, build_dictionary
 from helper.dataset import merge
@@ -51,41 +50,6 @@ if __name__ == '__main__':
 
    # model.embedding_mode()
 
-    model.train()
-    for epoch in range(max_epochs):
-        _loss = 0
-        _batch = 0
-        prev_loss = 999
-        print('Epoch: ' + str(epoch))
-        for idx, batch_one_hot, labels in data_set_generator:
-            # labels = torch.stack(labels, dim=1)
-            # batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
-            # print(model(batch_one_hot.cpu()).size())
-            _batch += 1
-            #labels = torch.stack(labels, dim=1)
-            batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
-            optimizer.zero_grad()
 
-            out = model(batch_one_hot.cpu())
-
-            loss = criterion(out, labels.cpu())
-
-            _loss += loss.item()
-            _loss_mean = round(_loss / _batch, 4)
-            sys.stdout.write('\r MSE Error: ' + str(_loss_mean))
-            loss.backward()
-            optimizer.step()
-        if prev_loss <= _loss_mean:
-            n_epochs_stop += 1
-        else:
-            n_epochs_stop = 0
-            prev_loss = _loss_mean
-
-        if n_epochs_stop == epochs_no_improve:
-            print('Early Stopping!')
-            break
-
-        print('')
-    torch.save(model.state_dict(), 'tmp/dae_model_500.pkl')
 
 
