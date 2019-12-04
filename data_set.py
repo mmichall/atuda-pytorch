@@ -49,11 +49,9 @@ class AmazonDomainDataSet(dataset.Dataset):
         self.length = len(self.data)
 
     def summary(self, name):
-        print("\n")
-        print("> \t {} Data Set summary \t ".format(name))
-        print("> \t Eexamples count: {} \t ".format(len(self.data)))
-        print("> \t Dict length: {} \t ".format(len(self.dict)))
-        print("\n")
+        print("> {} data set summary \t ".format(name))
+        print("+\t Examples count: {} \t ".format(len(self.data)))
+        print("+\t Dict length: {} \t\n".format(len(self.dict)))
 
 
 class AmazonSubsetWrapper(dataset.Dataset):
@@ -101,12 +99,10 @@ def train_valid_target_split(src_domain: str, tgt_domain: str, params_train,
 def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_factor=0.0) -> DataLoader:
     src_domain_data_set, tgt_domain_data_set = load_data(src_domain, tgt_domain)
 
-    dictionary = build_dictionary([src_domain_data_set, tgt_domain_data_set], 5000)
-
     data_set = merge([src_domain_data_set, tgt_domain_data_set])
-    data_set.dict = dictionary
+    data_set.dict = src_domain_data_set.dict
     data_set.denoising_factor = denoising_factor
-    data_set.summary('data_set')
+    data_set.summary('Unsupervised data set')
 
     return DataLoader(data_set, **params_train)
 

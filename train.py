@@ -11,21 +11,14 @@ from nn.trainer import AutoEncoderTrainer
 
 def run(args):
     domains_summary()
-    print('> Parameters of training {} model:'.format(args.model))
+    parameters_summary()
 
     train_params = {'batch_size': args.train_batch_size, 'shuffle': args.train_data_set_shuffle}
-    print('+\t data_loader parameters: {}'.format(train_params))
-    print('+\t loss: {}'.format(args.loss))
-    print('+\t lr: {}'.format(args.learning_rate))
-    print('+\t input denoising factor: {}'.format(args.denoising_factor))
-    print('+\t scheduler parameters: {}'.format({'lr factor': args.reduce_lr_factor, 'lr_patience': args.reduce_lr_patience}))
-    print('+\t max epochs: {}'.format(args.max_epochs))
-    print('+\t epochs no improve: {}'.format(args.epochs_no_improve))
-    print('\n')
 
     if args.model == 'AutoEncoder':
         ae_model = StackedAutoEncoder(ast.literal_eval(args.autoencoder_shape))
         ae_model.summary()
+
         optimizer = torch.optim.Adam(ae_model.parameters(), lr=args.learning_rate)
         scheduler = ReduceLROnPlateau(optimizer, factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
         criterion = args.loss
@@ -54,6 +47,20 @@ def domains_summary():
     print('+\t TARGET domain: {}'.format(args.tgt_domain) + '\n')
 
 
+def parameters_summary():
+    print('> Parameters of training {} model:'.format(args.model))
+    print('+\t data_loader parameters: {}'.format(
+        {'batch_size': args.train_batch_size, 'shuffle': args.train_data_set_shuffle}))
+    print('+\t loss: {}'.format(args.loss))
+    print('+\t lr: {}'.format(args.learning_rate))
+    print('+\t input denoising factor: {}'.format(args.denoising_factor))
+    print('+\t scheduler parameters: {}'.format(
+        {'lr factor': args.reduce_lr_factor, 'lr_patience': args.reduce_lr_patience}))
+    print('+\t max epochs: {}'.format(args.max_epochs))
+    print('+\t epochs no improve: {}'.format(args.epochs_no_improve))
+    print('\n')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -65,7 +72,7 @@ if __name__ == '__main__':
     # Training parameters
     parser.add_argument('--model', required=False, default='AutoEncoder')
     parser.add_argument('--max_epochs', required=False, type=int, default=100)
-    parser.add_argument('--train_batch_size', required=False, type=int, default=8)
+    parser.add_argument('--train_batch_size', required=False, type=int, default=16)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
     parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-04)
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.2)
@@ -76,7 +83,7 @@ if __name__ == '__main__':
 
     # Models parameters
     parser.add_argument('--autoencoder_shape', required=False, default='(5000,1000,250)')
-    parser.add_argument('--model_file', required=False, default='model.pth')
+    parser.add_argument('--model_file', required=False, default='auto_encoder_5000_1000_250.pt')
 
     args = parser.parse_args()
     run(args)

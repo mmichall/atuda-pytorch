@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
-
+import math
 from data_set import AmazonDomainDataSet
 from utils.measure import acc
 from torch.utils.data import DataLoader
@@ -25,12 +25,14 @@ class AutoEncoderTrainer:
         self.epochs_no_improve = epochs_no_improve
 
     def fit(self, train_data_generator):
+        print("> Training is running...")
         self.model.train()
         for epoch in range(self.max_epochs):
             _loss = 0
             _batch = 0
             prev_loss = 999
-            print('Epoch: ' + str(epoch))
+            batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
+            print('+ \tepoch number: ' + str(epoch))
             for idx, inputs, labels in train_data_generator:
                 _batch += 1
                 inputs, labels = inputs.to(device, torch.float), labels.to(device, torch.float)
@@ -41,7 +43,7 @@ class AutoEncoderTrainer:
 
                 _loss += loss.item()
                 _loss_mean = round(_loss / _batch, 4)
-                sys.stdout.write('\r MSE Error: ' + str(_loss_mean))
+                sys.stdout.write('\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__, _loss_mean))
                 loss.backward()
                 self.optimizer.step()
             if prev_loss <= _loss_mean:

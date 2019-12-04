@@ -35,8 +35,8 @@ def doc2one_hot(doc: List[str], dictionary: Dict):
 
 def build_dictionary(data_sets: List, limit=None):
     _dict = {}
-    print("# Dictionary building... ")
-    for item in tqdm(pd.concat([_set.data for _set in data_sets]).itertuples()):
+
+    for item in pd.concat([_set.data for _set in data_sets]).itertuples():
         for word in item.acl_processed:
             cnt = _dict.setdefault(word[0], 0)
             _dict[word[0]] = cnt + int(word[1])
