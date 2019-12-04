@@ -3,8 +3,8 @@ import random
 from typing import List
 import pandas as pd
 from torch.utils.data import dataset, DataLoader
-from helper.data import doc2one_hot, build_dictionary, train_valid_split
-from helper.reader import AmazonDomainDataReader
+from utils.data import doc2one_hot, build_dictionary, train_valid_split
+from utils.reader import AmazonDomainDataReader
 
 
 class AmazonDomainDataSet(dataset.Dataset):

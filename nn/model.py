@@ -79,6 +79,7 @@ class StackedAutoEncoder(nn.Module):
     def __init__(self, shape: tuple):
         super(StackedAutoEncoder, self).__init__()
         self.train_mode = True
+        self.shape = shape
 
         self.encoder_modules = []
         self.decoder_modules = []
@@ -98,9 +99,6 @@ class StackedAutoEncoder(nn.Module):
 
         self.to(device)
 
-        print('> AutoEncoder summary: ')
-        summary(self, input_size=(shape[0], ))
-
     def train_mode(self):
         self.train_mode = True
 
@@ -113,5 +111,8 @@ class StackedAutoEncoder(nn.Module):
             x = self.decoder(x)
         return x
 
+    def summary(self):
+        print('> Model summary: \n{}'.format(self))
+        summary(self, input_size=(self.shape[0], ))
 
 

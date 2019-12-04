@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
 
 from data_set import AmazonDomainDataSet
-from helper.measure import acc
+from utils.measure import acc
 from torch.utils.data import DataLoader
 
 use_cuda = torch.cuda.is_available()
@@ -22,7 +22,7 @@ class AutoEncoderTrainer:
         self.optimizer = optimizer
         self.max_epochs = max_epochs
         self.scheduler = scheduler
-        self.epochs_no_improve = 3
+        self.epochs_no_improve = epochs_no_improve
 
     def fit(self, train_data_generator):
         self.model.train()
