@@ -1,12 +1,13 @@
 import argparse
-from torch.nn.modules.loss import BCELoss, MSELoss, _Loss
+from torch.nn.modules.loss import BCELoss, CrossEntropyLoss, MSELoss, _Loss
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import ast
 import torch
 from data_set import as_one_dataloader
-from nn.model import StackedAutoEncoder
+from nn.loss import MultiViewLoss
+from nn.model import StackedAutoEncoder, ATTFeedforward
 from data_set import train_valid_target_split
-from nn.trainer import AutoEncoderTrainer
+from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer
 
 
 def run(args):
@@ -26,19 +27,25 @@ def run(args):
         trainer = AutoEncoderTrainer(ae_model, criterion, optimizer, scheduler, args.max_epochs, epochs_no_improve=args.epochs_no_improve)
         trainer.fit(data_generator)
         torch.save(ae_model.state_dict(), args.model_file)
-    else :
+        print('Model was saved in {} file.'.format(args.model_file))
+    elif args.model == 'ATTFeedforward':
+        if args.auto_encoder_embedding is not None:
+            ae_model = StackedAutoEncoder(ast.literal_eval(args.autoencoder_shape))
+            ae_model.load_state_dict(torch.load(args.auto_encoder_embedding, map_location='cpu'))
+            ae_model.froze()
+
         train_generator, valid_generator, target_generator = train_valid_target_split(args.src_domain, args.tgt_domain,
                                                                                       train_params)
-    #
-    # model = ATTFeedforward(5250, 50)
-    #
-    # criterion = MultiViewLoss()
-    # criterion_t = BCELoss()
-    # optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-    # scheduler = ReduceLROnPlateau(optimizer, factor=0.2, patience=3)
-    #
-    # trainer = DomainAdaptationTrainer(ae_model, model, criterion, BCELoss(), optimizer, scheduler, args.max_epoch)
-    # trainer.fit(train_generator, valid_generator, target_generator, dictionary)
+        attff_model = ATTFeedforward(args.attff_input_size, args.attff_hidden_size)
+        attff_model.summary()
+        criterion = MultiViewLoss()
+        criterion_t = CrossEntropyLoss()
+
+        optimizer = torch.optim.Adam(attff_model.parameters(), lr=args.learning_rate)
+        scheduler = ReduceLROnPlateau(optimizer, factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
+
+        trainer = DomainAdaptationTrainer(attff_model, criterion, criterion_t, optimizer, scheduler, args.max_epochs, ae_model=ae_model)
+        trainer.fit(train_generator, valid_generator, target_generator, max_epochs=args.max_epochs)
 
 
 def domains_summary():
@@ -70,7 +77,7 @@ if __name__ == '__main__':
     parser.add_argument('--tgt_domain', required=False, help='the target domain.', default='kitchen')
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='AutoEncoder')
+    parser.add_argument('--model', required=False, default='ATTFeedforward')
     parser.add_argument('--max_epochs', required=False, type=int, default=100)
     parser.add_argument('--train_batch_size', required=False, type=int, default=16)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
@@ -78,12 +85,15 @@ if __name__ == '__main__':
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.2)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.5)
-    parser.add_argument('--epochs_no_improve', required=False, type=float, default=3)
+    parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
+    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_1000_250.pt')
 
     # Models parameters
     parser.add_argument('--autoencoder_shape', required=False, default='(5000,1000,250)')
-    parser.add_argument('--model_file', required=False, default='auto_encoder_5000_1000_250.pt')
+    parser.add_argument('--attff_input_size', required=False, type=int, default=5250)
+    parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
+    parser.add_argument('--model_file', required=False, default='tmp/auto_encoder_5000_1000_250.pt')
 
     args = parser.parse_args()
     run(args)

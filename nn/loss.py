@@ -7,9 +7,9 @@ class MultiViewLoss(nn.Module):
     def __init__(self):
         super(MultiViewLoss, self).__init__()
 
-    def forward(self, f1_out, f2_out, w1, w2, y, _del):
-        f1_ce = F.binary_cross_entropy(f1_out, y, reduction='none')
-        f2_ce = F.binary_cross_entropy(f2_out, y, reduction='none')
+    def forward(self, f1_out, f2_out, w1, w2, y):
+        f1_ce = F.cross_entropy(f1_out, y, reduction='none')
+        f2_ce = F.cross_entropy(f2_out, y, reduction='none')
         diff = torch.abs(torch.sum(torch.abs(w1)) - torch.sum(torch.abs(w2)))
         w1 = w1.reshape(-1).view(2500, 1).t()
         w2 = w2.reshape(-1).view(2500, 1)

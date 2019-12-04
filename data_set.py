@@ -15,6 +15,7 @@ class AmazonDomainDataSet(dataset.Dataset):
         self.dict = {}
         self.denoising_factor = denoising_factor
         self.length = len(self.data)
+        self.is_labeled = is_labeled
 
     def __len__(self):
         return self.length
@@ -31,7 +32,7 @@ class AmazonDomainDataSet(dataset.Dataset):
                     _denoised[i] = 0
             return index, _denoised, _doc2one_hot
 
-        return index, _doc2one_hot, item.sentiment
+        return index, _doc2one_hot, item.sentiment, self.is_labeled
 
     def get(self, index):
         return self.data.iloc[index]

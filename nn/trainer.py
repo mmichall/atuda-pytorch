@@ -7,6 +7,7 @@ import numpy as np
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
 import math
+import torch.nn.functional as F
 from data_set import AmazonDomainDataSet
 from utils.measure import acc
 from torch.utils.data import DataLoader
@@ -43,7 +44,9 @@ class AutoEncoderTrainer:
 
                 _loss += loss.item()
                 _loss_mean = round(_loss / _batch, 4)
-                sys.stdout.write('\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__, _loss_mean))
+                sys.stdout.write(
+                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__,
+                                                         _loss_mean))
                 loss.backward()
                 self.optimizer.step()
             if prev_loss <= _loss_mean:
@@ -57,11 +60,12 @@ class AutoEncoderTrainer:
                 break
 
             print('')
+        print("> Training is over. Thank you for your patience :).")
 
 
 class DomainAdaptationTrainer:
 
-    def __init__(self, ae_model, model, criterion, criterion_t, optimizer, scheduler, max_epochs):
+    def __init__(self, model, criterion, criterion_t, optimizer, scheduler, max_epochs, ae_model=None, epochs_no_improve=3):
         self.model = model
         self.criterion = criterion
         self.criterion_t = criterion_t
@@ -69,23 +73,23 @@ class DomainAdaptationTrainer:
         self.max_epochs = max_epochs
         self.scheduler = scheduler
         self.ae_model = ae_model
+        self.epochs_no_improve = epochs_no_improve
         self.model.to(device)
 
-    def fit(self, training_generator, validation_generator, target_data_set, _dict):
-        target_generator = DataLoader(target_data_set, **{'batch_size': len(target_data_set)})
-        self._fit(training_generator, validation_generator, target_generator, self.max_epochs, _dict=_dict)
+    def __fit(self, training_generator, validation_generator, target_generator):
+        self._fit(training_generator, validation_generator, target_generator, self.max_epochs)
         torch.save(self.model.state_dict(), 'tmp/model_5000+250.pt')
-        #self.model.load_state_dict(torch.load('tmp/model_5000_100.pt'))
+        # self.model.load_state_dict(torch.load('tmp/model_5000_100.pt'))
 
         params = {'batch_size': 8,
                   'shuffle': False,
                   'num_workers': 1}
 
         training_tgt_data_set = AmazonDomainDataSet()
-        training_tgt_data_set.dict = _dict
+        training_tgt_data_set.dict = target_generator.dataset.dict
 
         # Pseudo labeling
-        _tgt_len = len(target_data_set)
+        _tgt_len = len(target_generator)
 
         idxs_to_remove = []
         wrong_target = 0
@@ -105,7 +109,8 @@ class DomainAdaptationTrainer:
                     labels = torch.stack(labels, dim=1)
                     batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
 
-                    batch_one_hot = self.ae_model(batch_one_hot)
+                    if self.ae_model:
+                        batch_one_hot = self.ae_model(batch_one_hot)
                     batch_num += 1
 
                     f1, f2, ft = self.model(batch_one_hot)
@@ -121,9 +126,9 @@ class DomainAdaptationTrainer:
                     for i in range(0, len(outt)):
                         if _idx[i] in idxs_to_remove:
                             continue
-                      #  if np.array_equal(out1[i].cpu().numpy(), out2[i].cpu().numpy())\
-                      #         and max(f1[i]) > 0.95 \
-                      #         and max(f2[i]) > 0.95:
+                        #  if np.array_equal(out1[i].cpu().numpy(), out2[i].cpu().numpy())\
+                        #         and max(f1[i]) > 0.95 \
+                        #         and max(f2[i]) > 0.95:
                         if True:
                             item = copy.deepcopy(target_generator.dataset.get(_idx[i]))
                             x1 = outt[i].cpu().numpy()
@@ -144,116 +149,100 @@ class DomainAdaptationTrainer:
             self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=3)
             self._fit(training_tgt_data_loader, target_generator, max_epochs=20, is_step2=True)
 
-    def _fit(self, data_loader: DataLoader, validation_loader: DataLoader, target_generator: DataLoader = None,
-             max_epochs=10, src_data_loader: DataLoader = None, is_step2=False, _dict=None):
-        self.model.train()
-        # Loop over epochs
-        epochs_no_improve = 3
+    def fit(self, training_loader: DataLoader, validation_loader: DataLoader, target_generator: DataLoader = None,
+            max_epochs=10, is_step2=False, _dict=None):
         n_epochs_stop = 0
-        _prev_metric = 0
+        prev_metric = 0
 
+        self.model.train()
         for epoch in range(max_epochs):
-            # Training
-            batch_num = 0
-            loss_all = []
-            _acc_all = []
-            _acc_all1 = []
-            _acc_all2 = []
-
+            print('+ \tepoch number: ' + str(epoch))
+            n_batch = 0
+            loss_f1f2 = []
+            loss_t = []
+            acc_all = []
             batches = []
-            # if src_data_loader:
-            #     for idx, batch_one_hot, labels in src_data_loader:
-            #         batches.append((idx, batch_one_hot, labels, 1))
+            batches_n = math.ceil(len(training_loader.dataset) / training_loader.batch_size)
+            # Init training data
+            for idx, batch_one_hot, labels, src in training_loader:
+                batches.append((idx, batch_one_hot, labels, 1))
 
-            for idx, batch_one_hot, labels in data_loader:
-                batches.append((idx, batch_one_hot, labels, 0))
+            for idx, input, labels, src in batches:
+                n_batch += 1
 
-            random.shuffle(batches)
-            for idx, batch_one_hot, labels, src in batches:
-                batch_num += 1
-                # Transfer to GPU
                 if type(labels) == list:
                     labels = torch.stack(labels, dim=1)
-                batch_one_hot, labels = batch_one_hot.to(device, torch.float), labels.to(device, torch.float)
-                ae_output = self.ae_model(batch_one_hot.cpu())
-                ae_output = ae_output.to(device, torch.float)
-                # Model computations
+
+                # CrossEntropyLoss does not expect a one-hot encoded vector as the target, but class indices
+                # max(1) will return the maximal value (and index in PyTorch) in this particular dimension.
+                input, labels_ = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long)
+                if self.ae_model:
+                    ae_output = self.ae_model(input)
+                    input = torch.cat([input, ae_output], 1)
+                # ae_output = ae_output.to(device, torch.float)
+
                 self.optimizer.zero_grad()
-                # Forward pass
-                f1, f2, ft = self.model(torch.cat([batch_one_hot, ae_output], 1))
-                # Compute Loss
-                # f1_out, f2_out, w1, w2, y, _del
-                loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels, 0.00001)
-                loss_t = self.criterion_t(ft, labels)
-                loss_all.append(loss.item())
 
-                if is_step2:
-                    _acc = acc(ft, labels)
-                    _acc_all.append(_acc)
-                    _loss_mean = round(mean(loss_all), 10)
+                f1, f2, ft = self.model(input)
 
-                    sys.stdout.write(
-                        '\r### Ft: Epoch {}, Batch {}, train loss: {} , acc: {} ###'.format(epoch, batch_num,
-                                                                                            _loss_mean,
-                                                                                            round(mean(_acc_all),
-                                                                                                  4)))
-                    sys.stdout.flush()
-                else:
-                    _loss_mean = round(mean(loss_all), 4)
+                _loss_f1f2 = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
+                _loss_t = self.criterion_t(ft, labels_)
+                loss_f1f2.append(_loss_f1f2.item())
+                loss_t.append(_loss_t.item())
 
-                    _acc1 = acc(f1, labels)
-                    _acc_all1.append(_acc1)
+                _acc = acc(F.softmax(ft, dim=1), labels)
+                acc_all.append(_acc)
+                _loss_f1f2_mean = round(mean(loss_f1f2), 4)
+                _loss_t_mean = round(mean(loss_f1f2), 4)
 
-                    _acc2 = acc(f2, labels)
-                    _acc_all2.append(_acc2)
+                sys.stdout.write(
+                    '\r+\tbatch: {} / {}, {}: {}, acc: {}'.format(n_batch, batches_n, self.criterion.__class__.__name__,
+                                                         _loss_f1f2_mean, round(mean(acc_all), 4)))
 
-                    sys.stdout.write(
-                        '\r### Epoch {}, Batch {}, train loss: {} F1 acc: {} ### | ### F2 acc: {} ###'.format(
-                            epoch, batch_num, _loss_mean, round(mean(_acc_all1), 4), round(mean(_acc_all2), 4)
-                        ))
-
-                    sys.stdout.flush()
-                # Backward pass
-                loss.backward(retain_graph=True)
-                if not is_step2 or src == 0:
-                    loss_t.backward()
+                _loss_f1f2.backward(retain_graph=True)
                 self.optimizer.step()
+                if not is_step2 or not src:
+                    _loss_t.backward()
+                    self.optimizer.step()
+
             sys.stdout.write('\n')
 
             _valid_acc = self.valid(validation_loader, target_generator)
-            self.scheduler.step(_loss_mean, epoch)
+            self.scheduler.step(_loss_f1f2_mean, epoch)
 
-            if _valid_acc <= _prev_metric:
+            if _valid_acc <= prev_metric:
                 n_epochs_stop += 1
-                if n_epochs_stop == epochs_no_improve:
+                if n_epochs_stop == self.epochs_no_improve:
                     print('Early stopping!')
                     break
             else:
                 n_epochs_stop = 0
-                _prev_metric = _valid_acc
+                prev_metric = _valid_acc
+
 
     def valid(self, data_loader, data_loader_2=None):
         with torch.set_grad_enabled(False):
             self.model.eval()
             _acc_all = []
             _acc_all_tgt = []
-            for idx, local_batch, local_labels in data_loader:
+            for idx, local_batch, local_labels, src in data_loader:
                 local_labels = torch.stack(local_labels, dim=1)
                 local_batch = local_batch.to(device, torch.float)
-                ae_output = self.ae_model(local_batch.cpu())
+                ae_output = self.ae_model(local_batch)
                 ae_output = ae_output.to(device)
                 f1, f2, ft = self.model(torch.cat([local_batch, ae_output], 1))
-                _acc_all.append(acc(ft, local_labels))
+                _acc_all.append(acc(F.softmax(ft, dim=1), local_labels))
             if data_loader_2 is not None:
-                for idx, local_batch, local_labels in data_loader_2:
+                for idx, local_batch, local_labels, src in data_loader_2:
                     local_labels = torch.stack(local_labels, dim=1)
                     local_batch = local_batch.to(device, torch.float)
-                    ae_output = self.ae_model(local_batch.cpu())
+                    ae_output = self.ae_model(local_batch)
                     ae_output = ae_output.to(device)
                     f1, f2, ft = self.model(torch.cat([local_batch, ae_output], 1))
-                    _acc_all_tgt.append(acc(ft, local_labels))
-                print('\r acc SOURCE_VALID: {}, acc TARGET: {}\n'.format(round(mean(_acc_all), 4), round(mean(_acc_all_tgt), 4)))
+                    _acc_all_tgt.append(acc(F.softmax(ft, dim=1), local_labels))
+                print('\r+\tacc valid: {}, acc target: {}\n'.format(round(mean(_acc_all), 4),
+                                                                         round(mean(_acc_all_tgt), 4)))
             else:
-                print('\r acc SOURCE_VALID: {}'.format(round(mean(_acc_all), 4)))
+                print('\r+\tacc valid: {}'.format(round(mean(_acc_all), 4)))
 
             return mean(_acc_all)

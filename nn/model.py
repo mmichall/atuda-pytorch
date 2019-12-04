@@ -1,6 +1,7 @@
 import random
 from torchsummary import summary
 import torch
+import torch.nn.functional as F
 from torch.nn import BatchNorm1d
 from torch import nn
 
@@ -23,23 +24,23 @@ class ATTFeedforward(torch.nn.Module):
         self.f1_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.f1_1_relu = torch.nn.ReLU()
         self.f1_dropout = torch.nn.Dropout(p=0.3)
-        self.f1_batchnorm = BatchNorm1d(50)
+        #self.f1_batchnorm = BatchNorm1d(50)
         self.f1_2 = torch.nn.Linear(self.hidden_size, 2)
-        self.f1_2_softmax = torch.nn.Softmax()
+        self.f1_2_softmax = torch.nn.Softmax(dim=0)
 
         self.f2_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.f2_1_relu = torch.nn.ReLU()
         self.f2_dropout = torch.nn.Dropout(p=0.3)
-        self.f2_batchnorm = BatchNorm1d(50)
+       # self.f2_batchnorm = BatchNorm1d(50)
         self.f2_2 = torch.nn.Linear(self.hidden_size, 2)
-        self.f2_2_softmax = torch.nn.Softmax()
+        self.f2_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f3_1 = torch.nn.Linear(self.hidden_size,self.hidden_size)
+        self.f3_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
         self.f3_1_relu = torch.nn.ReLU()
         self.f3_dropout = torch.nn.Dropout(p=0.3)
-        self.f3_batchnorm = BatchNorm1d(50)
+       # self.f3_batchnorm = BatchNorm1d(50)
         self.f3_2 = torch.nn.Linear(self.hidden_size, 2)
-        self.f3_2_softmax = torch.nn.Softmax()
+        self.f3_2_softmax = torch.nn.Softmax(dim=0)
 
         self.to(device)
 
@@ -53,26 +54,31 @@ class ATTFeedforward(torch.nn.Module):
         output1 = self.f1_1_relu(output1)
         output1 = self.f1_dropout(output1)
         output1 = self.f1_2(output1)
-        output1 = self.f1_2_softmax(output1)
+        #output1 = self.f1_2_softmax(output1)
+#        output1 = F.softmax(output1, dim=0)
         #F1_softmax = self.f1_softmax(F1_relu)
 
         output2 = self.f2_1(f_relu)
         output2 = self.f2_1_relu(output2)
         output2 = self.f2_dropout(output2)
         output2 = self.f2_2(output2)
-        output2 = self.f2_2_softmax(output2)
+        #output2 = self.f2_2_softmax(output2)
 
         output3 = self.f3_1(f_relu)
         output3 = self.f3_1_relu(output3)
         output3 = self.f3_dropout(output3)
         output3 = self.f3_2(output3)
-        output3 = self.f3_2_softmax(output3)
+     #   output3 = self.f3_2_softmax(output3)
 
         # ft_hidden = self.ft(f_relu)
         # ft_relu = self.ft_relu(ft_hidden)
         # #Ft_softmax = self.f1_softmax(Ft_relu)
 
         return output1, output2, output3
+
+    def summary(self):
+        print('> Model summary: \n{}'.format(self))
+        summary(self, input_size=(self.hidden_size,  self.input_size, ))
 
 
 class StackedAutoEncoder(nn.Module):
@@ -102,7 +108,7 @@ class StackedAutoEncoder(nn.Module):
     def train_mode(self):
         self.train_mode = True
 
-    def frozen(self):
+    def froze(self):
         self.train_mode = False
 
     def forward(self, x):
