@@ -20,15 +20,18 @@ def train_valid_split(range_from: int, range_to: int, valid_split: float):
 
 def word2one_hot(word: str, dictionary: Dict, vec_length: int):
     one_hot_vec = np.zeros(vec_length)
-    if word in dictionary:
-        one_hot_vec[dictionary[word][0]] = 1
+    one_hot_vec[dictionary[word][0]] = 1
     return one_hot_vec
 
 
-def doc2one_hot(doc: List[str], dictionary: Dict):
+def doc2one_hot(doc: List[str], dictionary: Dict, words_to_reconstruct=None):
     vec_length = len(dictionary)
     vector = np.zeros(len(dictionary))
     for word in doc:
+        if words_to_reconstruct is not None and word[0] in words_to_reconstruct:
+            continue
+        if word[0] not in dictionary:
+            continue
         vector = np.add(vector, word2one_hot(word[0], dictionary, vec_length))
     return vector
 
@@ -36,10 +39,12 @@ def doc2one_hot(doc: List[str], dictionary: Dict):
 def build_dictionary(data_sets: List, limit=None):
     _dict = {}
 
-    for item in pd.concat([_set.data for _set in data_sets]).itertuples():
-        for word in item.acl_processed:
-            cnt = _dict.setdefault(word[0], 0)
-            _dict[word[0]] = cnt + int(word[1])
+    for data_set in data_sets:
+        _len = len(data_set)
+        for item in data_set.data.itertuples():
+            for word in item.acl_processed:
+                cnt = _dict.setdefault(word[0], 0)
+                _dict[word[0]] = cnt + int(word[1]) / _len
 
     _sorted_dict = _dict
     if limit:
