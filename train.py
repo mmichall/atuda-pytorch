@@ -63,7 +63,7 @@ def run(args):
             torch.save(attff_model.state_dict(), model_file)
             print('Model was saved in {} file.'.format(model_file))
 
-        trainer.pseudo_label(src_domain_data_set, tgt_domain_data_set, iterations=20, train_params=train_params, max_epochs=args.max_epochs)
+        trainer.pseudo_label(src_domain_data_set, tgt_domain_data_set, iterations=1, train_params=train_params, max_epochs=args.max_epochs)
 
 
 
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.2)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.0)
-    parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
+    parser.add_argument('--epochs_no_improve', required=False, type=float, default=2)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
     parser.add_argument('--auto_encoder_embedding',required=False, default='tmp/auto_encoder_5000_1000_250.pt')
     parser.add_argument('--load_attnn_model', required=False, type=bool, default=True)

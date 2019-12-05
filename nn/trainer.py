@@ -1,3 +1,4 @@
+import random
 import sys
 import copy
 from statistics import mean
@@ -81,7 +82,7 @@ class DomainAdaptationTrainer:
         self.model.to(device)
 
 
-    def fit(self, training_loader: DataLoader, validation_loader: DataLoader, target_generator: DataLoader = None,
+    def fit(self, training_loader: DataLoader, validation_loader: DataLoader, target_data_set: DataLoader = None,
             max_epochs=10, is_step2=False, _dict=None):
         n_epochs_stop = 0
         prev_metric = 0
@@ -96,8 +97,15 @@ class DomainAdaptationTrainer:
             batches = []
             batches_n = math.ceil(len(training_loader.dataset) / training_loader.batch_size)
             # Init training data
-            for idx, batch_one_hot, labels, src in training_loader:
-                batches.append((idx, batch_one_hot, labels, 1))
+            # for idx, batch_one_hot, labels, src in training_loader:
+            #     batches.append((idx, batch_one_hot, labels, True))
+
+            if target_data_set is not None:
+                target_generator = DataLoader(target_data_set, batch_size=training_loader.batch_size)
+                for idx, batch_one_hot, labels, src in target_generator:
+                    batches.append((idx, batch_one_hot, labels, False))
+
+            random.shuffle(batches)
 
             for idx, input, labels, src in batches:
                 n_batch += 1
@@ -182,12 +190,13 @@ class DomainAdaptationTrainer:
 
 
     def pseudo_label(self, src_data_set, target_data_set, train_params, iterations=20, max_epochs=3):
-        train_generator, valid_generator, target_generator = train_valid_target_split(src_data_set, target_data_set, train_params)
+
+        target_generator = DataLoader(target_data_set, batch_size=len(target_data_set))
+        src_generator = DataLoader(src_data_set, **train_params)
         idx_added = []
         training_tgt_data_set = AmazonDomainDataSet()
         training_tgt_data_set.dict = src_data_set.dict
-        for item in src_data_set:
-            training_tgt_data_set.append(item)
+
         for _iter in range(iterations):
             n_wrong_labeled = 0
             n_all_qualified = 0
@@ -215,19 +224,25 @@ class DomainAdaptationTrainer:
                         break
 
             for _i in most_confident_idxs:
-                if f1_idx[_i] == f2_idx[_i] and f1_max[_i] > 0.95 and f2_max[_i] > 0.95:
+                if f1_idx[_i] == f2_idx[_i]: #and f1_max[_i] > 0.95 and f2_max[_i] > 0.95:
                     n_all_qualified += 1
                     idx_added.append(_i)
                     item = copy.deepcopy(target_generator.dataset.get(_i))
-                    item.sentiment = (1, 0) if f1_idx[_i] == 1 else (0, 1)
-                    training_tgt_data_set.append(item)
                     if np.argmax(item.sentiment) != np.argmax(f1[_i].cpu().numpy()):
                         n_wrong_labeled += 1
+                    item.sentiment = (1, 0) if f1_idx[_i] == 0 else (0, 1)
+                    training_tgt_data_set.append(item)
                 else:
                     pass
             print('Wrong labeled count: {} on {} qualified, all {}'.format(n_wrong_labeled, n_all_qualified, len(idx)))
 
-            self.fit(training_tgt_data_set, target_generator, is_step2=True)
+           # train_generator, valid_generator, target_generator = train_valid_target_split(training_tgt_data_set,
+             #                                                                             target_data_set,
+               #                                                                           train_params)
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001)
+            self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=3)
+
+            self.fit(src_generator, target_generator, training_tgt_data_set, is_step2=True)
 
 
 
