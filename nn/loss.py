@@ -15,6 +15,6 @@ class MultiViewLoss(nn.Module):
         w2 = w2.reshape(-1)
         w1 = w1.view(len(w1), 1).t()
         w2 = w2.view(len(w2), 1)
-        # regularizer = torch.mm(w1, w2)
-        # print(regularizer.item(), diff)
-        return torch.mean(f1_ce + f2_ce) + 0.001 * torch.abs(torch.mm(w1, w2)) # + 0.001 * diff
+        regularizer = torch.mm(w1, w2)
+       # print(regularizer.item())
+        return torch.mean(f1_ce + f2_ce) + torch.abs(torch.mm(w1, w2)) # + 0.001 * diff

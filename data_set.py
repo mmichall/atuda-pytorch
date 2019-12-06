@@ -93,7 +93,7 @@ def train_valid_target_split(src_domain_data_set, tgt_domain_data_set, params_tr
 
     # Generators
     training_generator = DataLoader(train_subset, **params_train)
-    validation_generator = DataLoader(valid_subset, **params_valid)
+    validation_generator = DataLoader(valid_subset, **params_train)
     target_generator = DataLoader(tgt_domain_data_set, **params_target)
 
     return training_generator, validation_generator, target_generator
