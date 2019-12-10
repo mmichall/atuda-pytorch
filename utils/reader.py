@@ -17,6 +17,7 @@ class AmazonDomainDataReader:
             for file in data_fls:
                 with open(path.join(_path, file), 'r') as f:
                     content = f.readlines()
+                    #content = list(dict.fromkeys(content))
 
                 for line in content:
                     line = line.split()

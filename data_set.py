@@ -31,13 +31,13 @@ class AmazonDomainDataSet(dataset.Dataset):
             for i in range(len(_denoised)):
                 if random.random() < self.denoising_factor:
                     _denoised[i] = 0
-            return index, _denoised, _doc2one_hot
+            return index, _denoised, _doc2one_hot, item.src
 
         if self.words_to_reconstruct is not None:
             _denoised = doc2one_hot(item.acl_processed, self.dict, self.words_to_reconstruct)
             return index, _denoised, item.sentiment, self.is_labeled
 
-        return index, _doc2one_hot, item.sentiment, self.is_labeled
+        return index, _doc2one_hot, item.sentiment, item.src
 
     def get(self, index):
         return self.data.iloc[index]
@@ -81,7 +81,9 @@ class AmazonSubsetWrapper(dataset.Dataset):
         self._data_set.append(item)
 
 
-def train_valid_target_split(src_domain_data_set, tgt_domain_data_set, params_train, train_valid_ratio=0.2) -> (DataLoader, DataLoader, DataLoader):
+def train_valid_target_split(src_domain_data_set, tgt_domain_data_set, params_train, train_valid_ratio=0.1) -> (DataLoader, DataLoader, DataLoader):
+    #print(src_domain_data_set.data)
+
     train_idxs, valid_idxs = train_valid_split(0, len(src_domain_data_set), train_valid_ratio)
     print("Training set length: {}, Validation set length: {}".format(len(train_idxs), len(valid_idxs)))
 
