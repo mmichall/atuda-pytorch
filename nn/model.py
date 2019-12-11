@@ -4,40 +4,136 @@ import torch
 import torch.nn.functional as F
 from torch.nn import BatchNorm1d
 from torch import nn, optim
+from torch.autograd import Function
+
+from nn.RevGrad import RevGrad
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
+class GradientReversalFunction(Function):
+    """
+    Gradient Reversal Layer from:
+    Unsupervised Domain Adaptation by Backpropagation (Ganin & Lempitsky, 2015)
+    Forward pass is the identity function. In the backward pass,
+    the upstream gradients are multiplied by -lambda (i.e. gradient is reversed)
+    """
+
+    @staticmethod
+    def forward(ctx, x, lambda_):
+        ctx.lambda_ = lambda_
+        return x.clone()
+
+    @staticmethod
+    def backward(ctx, grads):
+        lambda_ = ctx.lambda_
+        lambda_ = grads.new_tensor(lambda_)
+        dx = -lambda_ * grads
+        return dx, None
+
+
+class GradientReversal(torch.nn.Module):
+    def __init__(self, lambda_=1):
+        super(GradientReversal, self).__init__()
+        self.lambda_ = lambda_
+
+    def forward(self, x):
+        return GradientReversalFunction.apply(x, self.lambda_)
+
+
+class SimpleAutoEncoder(nn.Module):
+    def __init__(self, shape: tuple):
+        super(SimpleAutoEncoder, self).__init__()
+        self.train_mode = True
+        self.shape = shape
+
+       # self.reversal_layer = RevGrad()
+
+       # self.domain_linear = nn.Linear(250, 1)
+        #self.domain_classifier = nn.Sequential(GradientReversal(lambda_=0.0001), self.domain_linear)
+
+        self.encoder_modules = []
+        self.decoder_modules = []
+        for _i in range(len(shape)-1):
+            seq_list = []
+            seq_list.append(nn.Linear(shape[_i], shape[_i+1]))
+            if _i != len(shape)-2:
+                seq_list.append(nn.ReLU(True))
+          #  seq_list.append(nn.Dropout(p=0.3))
+            self.encoder_modules.append(nn.Sequential(*seq_list))
+
+        for _i in reversed(range(len(shape)-1)):
+            seq_list = []
+            seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
+            if _i != 0:
+                seq_list.append(nn.ReLU(True))
+                #seq_list.append(nn.Dropout(p=0.3))
+            #else:
+                #seq_list.append(nn.Sigmoid())
+            self.decoder_modules.append(nn.Sequential(*seq_list))
+
+        self.encoder = nn.Sequential(*self.encoder_modules)
+        self.decoder = nn.Sequential(*self.decoder_modules)
+
+        self.to(device)
+
+    def forward(self, x):
+    #    result = torch.empty(0).cuda()
+        if self.train_mode:
+            x = self.encoder(x)
+          #  domain_out = self.domain_classifier(x)
+            y = self.decoder(F.relu(x))
+            return F.sigmoid(y)#, domain_out
+        else:
+            return self.encoder(x)
+
+    def set_train_mode(self, switch):
+        self.train_mode = switch
+
+    def froze(self):
+        torch.set_grad_enabled(False)
+        self.eval()
+
+    def unfroze(self):
+        torch.set_grad_enabled(True)
+        self.train()
+
+    def summary(self):
+        print('> Model summary: \n{}'.format(self))
+        summary(self, input_size=(self.shape[0], ))
+
+
 class ATTFeedforward(torch.nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, ae_model=None):
         super(ATTFeedforward, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.ae_model = ae_model
 
         self.f = torch.nn.Linear(self.input_size, self.hidden_size)
         self.f_relu = torch.nn.ReLU()
-        self.f_dropout = torch.nn.Dropout(p=0.5)
+        self.f_dropout = torch.nn.Dropout(p=0.4)
         self.f_batchnorm = torch.nn.BatchNorm1d(50)
         # self.f_softmax = torch.nn.Softmax()
 
-        self.f1_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.f1_1 = torch.nn.Linear(250, self.hidden_size)
         self.f1_1_relu = torch.nn.ReLU()
-        self.f1_dropout = torch.nn.Dropout(p=0.4)
+        self.f1_dropout = torch.nn.Dropout(p=0.3)
         self.f1_batchnorm = BatchNorm1d(50)
         self.f1_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f1_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f2_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.f2_1 = torch.nn.Linear(250, self.hidden_size)
         self.f2_1_relu = torch.nn.ReLU()
-        self.f2_dropout = torch.nn.Dropout(p=0.4)
+        self.f2_dropout = torch.nn.Dropout(p=0.3)
         self.f2_batchnorm = BatchNorm1d(50)
         self.f2_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f2_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f3_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.f3_1 = torch.nn.Linear(250, self.hidden_size)
         self.f3_1_relu = torch.nn.ReLU()
-        self.f3_dropout = torch.nn.Dropout(p=0.4)
+        self.f3_dropout = torch.nn.Dropout(p=0.3)
         self.f3_batchnorm = BatchNorm1d(50)
         self.f3_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f3_2_softmax = torch.nn.Softmax(dim=0)
@@ -45,11 +141,13 @@ class ATTFeedforward(torch.nn.Module):
         self.to(device)
 
     def forward(self, x):
-        output = self.f(x)
-    #    output = self.f_batchnorm(output)
+        if self.ae_model is None:
+            output = self.f(x)
+        else:
+            output = self.ae_model(x)
+
         output = self.f_relu(output)
         f_relu = self.f_dropout(output)
-
 
         output1 = self.f1_1(f_relu)
  #       output1 = self.f1_batchnorm(output1)
@@ -65,7 +163,6 @@ class ATTFeedforward(torch.nn.Module):
         output2 = self.f2_1_relu(output2)
         output2 = self.f2_dropout(output2)
         output2 = self.f2_2(output2)
-
         #output2 = self.f2_2_softmax(output2)
 
         output3 = self.f3_1(f_relu)
@@ -73,12 +170,7 @@ class ATTFeedforward(torch.nn.Module):
         output3 = self.f3_1_relu(output3)
         output3 = self.f3_dropout(output3)
         output3 = self.f3_2(output3)
-
      #   output3 = self.f3_2_softmax(output3)
-
-        # ft_hidden = self.ft(f_relu)
-        # ft_relu = self.ft_relu(ft_hidden)
-        # #Ft_softmax = self.f1_softmax(Ft_relu)
 
         return output1, output2, output3
 
@@ -88,50 +180,12 @@ class ATTFeedforward(torch.nn.Module):
     def get_f2_1(self):
         return self.f2_1
 
+    def reset(self):
+        self.__init__(self.input_size, self.hidden_size, self.ae_model)
+
     def summary(self):
         print('> Model summary: \n{}'.format(self))
         summary(self, input_size=(self.hidden_size,  self.input_size, ))
-
-
-class StackedAutoEncoder(nn.Module):
-    def __init__(self, shape: tuple):
-        super(StackedAutoEncoder, self).__init__()
-        self.train_mode = True
-        self.shape = shape
-
-        self.encoder_modules = []
-        self.decoder_modules = []
-        for _i in range(len(shape)-1):
-            self.encoder_modules.append(nn.Linear(shape[_i], shape[_i+1]))
-            self.encoder_modules.append(nn.ReLU(True))
-
-        for _i in reversed(range(len(shape)-1)):
-            self.decoder_modules.append(nn.Linear(shape[_i+1], shape[_i]))
-            if _i != 0:
-                self.decoder_modules.append(nn.ReLU(True))
-            else:
-                self.decoder_modules.append(nn.Sigmoid())
-
-        self.encoder = nn.Sequential(*self.encoder_modules)
-        self.decoder = nn.Sequential(*self.decoder_modules)
-
-        self.to(device)
-
-    def train_mode(self):
-        self.train_mode = True
-
-    def froze(self):
-        self.train_mode = False
-
-    def forward(self, x):
-        x = self.encoder(x)
-        if self.train_mode:
-            x = self.decoder(x)
-        return x
-
-    def summary(self):
-        print('> Model summary: \n{}'.format(self))
-        summary(self, input_size=(self.shape[0], ))
 
 
 class ModelWithTemperature(nn.Module):
@@ -146,11 +200,14 @@ class ModelWithTemperature(nn.Module):
         super(ModelWithTemperature, self).__init__()
         self.model = model
         self.ae_model = ae_model
-        self.temperatures = [nn.Parameter(torch.ones(1)), nn.Parameter(torch.ones(1)), nn.Parameter(torch.ones(1))]
+        self.temperatures = [nn.Parameter(torch.ones(1) * 1.5), nn.Parameter(torch.ones(1) * 1.5)]
 
     def forward(self, input):
         f1_logits, f2_logits, fn_logits = self.model(input)
-        return self.temperature_scale(f1_logits, self.temperatures[0]), self.temperature_scale(f2_logits, self.temperatures[1]), self.temperature_scale(fn_logits, self.temperatures[2])
+        return self.temperature_scale(f1_logits, self.temperatures[0]),\
+               self.temperature_scale(f2_logits, self.temperatures[1]),\
+               fn_logits
+        # return self.model(input)
 
     def temperature_scale(self, logits, temperature):
         """
@@ -185,18 +242,19 @@ class ModelWithTemperature(nn.Module):
                 f1_logits, f2_logits, fn_logits = self.model(input)
                 f1_logits_list.append(f1_logits)
                 f2_logits_list.append(f2_logits)
-                fn_logits_list.append(fn_logits)
+                #fn_logits_list.append(fn_logits)
                 labels_list.append(torch.stack(label, dim=1))
             f1_logits = torch.cat(f1_logits_list).cuda()
             f2_logits = torch.cat(f2_logits_list).cuda()
-            fn_logits = torch.cat(fn_logits_list).cuda()
+            #fn_logits = torch.cat(fn_logits_list).cuda()
 
             labels = torch.cat(labels_list)
             labels = torch.max(labels, dim=1)[1].cuda()
 
         # Calculate NLL and ECE before temperature scaling
-        for i, logits in enumerate((f1_logits, f2_logits, fn_logits)):
+        for i, logits in enumerate((f1_logits, f2_logits)):
             before_temperature_nll = nll_criterion(logits, labels).item()
+            print('before')
             before_temperature_ece = ece_criterion(logits, labels).item()
             print('Before temperature - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
 
@@ -211,6 +269,7 @@ class ModelWithTemperature(nn.Module):
 
             # Calculate NLL and ECE after temperature scaling
             after_temperature_nll = nll_criterion(self.temperature_scale(logits, self.temperatures[i]), labels).item()
+            print('after')
             after_temperature_ece = ece_criterion(self.temperature_scale(logits, self.temperatures[i]), labels).item()
             print('Optimal temperature: %.3f' % self.temperatures[i].item())
             print('After temperature - NLL: %.3f, ECE: %.3f' % (after_temperature_nll, after_temperature_ece))
@@ -252,13 +311,21 @@ class _ECELoss(nn.Module):
         accuracies = predictions.eq(labels)
 
         ece = torch.zeros(1, device=logits.device)
+
+        accuracy_in_bins = []
+        avg_confidence_in_bins = []
         for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
             # Calculated |confidence - accuracy| in each bin
             in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
             prop_in_bin = in_bin.float().mean()
+
             if prop_in_bin.item() > 0:
                 accuracy_in_bin = accuracies[in_bin].float().mean()
                 avg_confidence_in_bin = confidences[in_bin].mean()
+                accuracy_in_bins.append(accuracy_in_bin.item())
+                avg_confidence_in_bins.append(avg_confidence_in_bin.item())
                 ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+       # print(accuracy_in_bins)
+      #  print(avg_confidence_in_bins)
 
         return ece
