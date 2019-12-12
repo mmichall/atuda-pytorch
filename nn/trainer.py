@@ -101,16 +101,16 @@ class DomainAdaptationTrainer:
             batches = []
             # Init training data
             for idx, batch_one_hot, labels, src in training_loader:
-                batches.append((idx, batch_one_hot, labels, True))
+                batches.append((idx, batch_one_hot, labels, src, True))
 
             if additional_training_data_set is not None:
                 training_tgt_generator = additional_training_data_set
                 for idx, batch_one_hot, labels, src in training_tgt_generator:
-                    batches.append((idx, batch_one_hot, labels, False))
+                    batches.append((idx, batch_one_hot, labels, src, False))
 
             random.shuffle(batches)
 
-            for idx, input, labels, src in batches:
+            for idx, input, labels, src, loss_upd in batches:
                 n_batch += 1
 
                 if type(labels) == list:
@@ -118,19 +118,23 @@ class DomainAdaptationTrainer:
 
                 # CrossEntropyLoss does not expect a one-hot encoded vector as the target, but class indices
                 # max(1) will return the maximal value (and index in PyTorch) in this particular dimension.
-                input, labels_ = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long)
+                input, labels_, src = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long), src.to(device, torch.float)
                 # if self.ae_model is not None:
                 #     input = self.ae_model(input)
                     #input = torch.cat([input, ae_output], 1)
 
                 self.optimizer.zero_grad()
 
-                f1, f2, ft = self.model(input)
+                f1, f2, ft, rev = self.model(input)
                 _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
+                _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
 
-                if not is_step2 or not src:
+                if not is_step2 or not loss_upd:
                     _loss_t = self.criterion_t(ft, labels_)
                     _loss = _loss + _loss_t
+
+                # if is_step2:
+                    # _loss = _loss + _loss_rev #
 
                 loss_f1f2.append(_loss.item())
                 # loss_t.append(_loss_t.item())
@@ -187,7 +191,7 @@ class DomainAdaptationTrainer:
                 # if self.ae_model:
                 #     input = self.ae_model(input)
                    # input = torch.cat([input, ae_output], 1)
-                f1, f2, ft = self.model(input)
+                f1, f2, ft, rev = self.model(input)
                 if valid:
                     _acc_all.append(
                         (acc(F.softmax(f1, dim=1), local_labels) + acc(F.softmax(f2, dim=1), local_labels)) / 2)
@@ -200,7 +204,7 @@ class DomainAdaptationTrainer:
                     # if self.ae_model:
                     #     input = self.ae_model(input)
                     # input = torch.cat([input, ae_output], 1)
-                    f1, f2, ft = self.model(input)
+                    f1, f2, ft, rev = self.model(input)
                     if valid:
                         _acc_all_tgt.append(
                             (acc(F.softmax(f1, dim=1), local_labels) + acc(F.softmax(f2, dim=1), local_labels)) / 2)
@@ -321,5 +325,5 @@ class DomainAdaptationTrainer:
                 # if self.ae_model:
                 #     input = self.ae_model(input)
                 # input = torch.cat([input, ae_output], 1)
-                f1, f2, ft = self.model(input)
+                f1, f2, ft, rev = self.model(input)
                 return idx, F.softmax(f1, dim=1), F.softmax(f2, dim=1), F.softmax(ft, dim=1)

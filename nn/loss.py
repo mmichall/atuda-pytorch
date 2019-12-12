@@ -10,14 +10,14 @@ class MultiViewLoss(nn.Module):
     def forward(self, f1_out, f2_out, w1, w2, y):
         f1_ce = F.cross_entropy(f1_out, y, reduction='none')
         f2_ce = F.cross_entropy(f2_out, y, reduction='none')
-        # diff = torch.abs(torch.sum(torch.abs(w1)) - torch.sum(torch.abs(w2)))
+        diff = torch.abs(torch.sum(torch.abs(w1)) - torch.sum(torch.abs(w2)))
         w1 = w1.reshape(-1)
         w2 = w2.reshape(-1)
         w1 = w1.view(len(w1), 1).t()
         w2 = w2.view(len(w2), 1)
         # regularizer = torch.mm(w1, w2)
         # print(regularizer.item())
-        return torch.mean(f1_ce + f2_ce) + 0.001 * torch.abs(torch.mm(w1, w2)) # + 0.001 * diff
+        return torch.mean(f1_ce + f2_ce) + torch.abs(torch.mm(w1, w2)) + 0.001 * diff
 
 
 class ReversalLoss(nn.Module):

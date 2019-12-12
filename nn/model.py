@@ -111,17 +111,23 @@ class ATTFeedforward(torch.nn.Module):
         self.hidden_size = hidden_size
         self.ae_model = ae_model
 
+        self._rev = GradientReversal()
+
         self.f = torch.nn.Linear(self.input_size, self.hidden_size)
         self.f_relu = torch.nn.ReLU()
         self.f_dropout = torch.nn.Dropout(p=0.4)
         self.f_batchnorm = torch.nn.BatchNorm1d(50)
         # self.f_softmax = torch.nn.Softmax()
 
+        self.reversal = torch.nn.Linear(250, self.hidden_size)
+        self.reversal_relu = torch.nn.ReLU()
+        self.reversal_out = torch.nn.Linear(self.hidden_size, 1)
+
         self.f1_1 = torch.nn.Linear(250, self.hidden_size)
         self.f1_1_relu = torch.nn.ReLU()
         self.f1_dropout = torch.nn.Dropout(p=0.3)
         self.f1_batchnorm = BatchNorm1d(50)
-        self.f1_2 = torch.nn.Linear(self.hidden_size, 2)
+        self.f1_2 = torch.nn.Linear(self.hidden_size, 2) # tutaj moze popaczać
         self.f1_2_softmax = torch.nn.Softmax(dim=0)
 
         self.f2_1 = torch.nn.Linear(250, self.hidden_size)
@@ -149,6 +155,11 @@ class ATTFeedforward(torch.nn.Module):
         output = self.f_relu(output)
         f_relu = self.f_dropout(output)
 
+        output_rev = self._rev(f_relu)
+        output_rev = self.reversal(output_rev)
+        output_rev = self.reversal_relu(output_rev)
+        output_rev = self.reversal_out(output_rev)
+
         output1 = self.f1_1(f_relu)
  #       output1 = self.f1_batchnorm(output1)
         output1 = self.f1_1_relu(output1)
@@ -172,7 +183,7 @@ class ATTFeedforward(torch.nn.Module):
         output3 = self.f3_2(output3)
      #   output3 = self.f3_2_softmax(output3)
 
-        return output1, output2, output3
+        return output1, output2, output3, output_rev
 
     def get_f1_1(self):
         return self.f1_1
