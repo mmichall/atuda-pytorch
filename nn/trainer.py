@@ -127,14 +127,14 @@ class DomainAdaptationTrainer:
 
                 f1, f2, ft, rev = self.model(input)
                 _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
-                _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
 
                 if not is_step2 or not loss_upd:
                     _loss_t = self.criterion_t(ft, labels_)
                     _loss = _loss + _loss_t
 
-                # if is_step2:
-                    # _loss = _loss + _loss_rev #
+                if is_step2:
+                    _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
+                    _loss = _loss + _loss_rev
 
                 loss_f1f2.append(_loss.item())
                 # loss_t.append(_loss_t.item())

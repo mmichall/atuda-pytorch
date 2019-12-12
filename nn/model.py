@@ -12,34 +12,15 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
-class GradientReversalFunction(Function):
-    """
-    Gradient Reversal Layer from:
-    Unsupervised Domain Adaptation by Backpropagation (Ganin & Lempitsky, 2015)
-    Forward pass is the identity function. In the backward pass,
-    the upstream gradients are multiplied by -lambda (i.e. gradient is reversed)
-    """
-
-    @staticmethod
-    def forward(ctx, x, lambda_):
-        ctx.lambda_ = lambda_
-        return x.clone()
-
-    @staticmethod
-    def backward(ctx, grads):
-        lambda_ = ctx.lambda_
-        lambda_ = grads.new_tensor(lambda_)
-        dx = -lambda_ * grads
-        return dx, None
-
-
-class GradientReversal(torch.nn.Module):
-    def __init__(self, lambda_=1):
-        super(GradientReversal, self).__init__()
-        self.lambda_ = lambda_
-
+class GradReverse(Function):
     def forward(self, x):
-        return GradientReversalFunction.apply(x, self.lambda_)
+        return x.view_as(x)
+
+    def backward(self, grad_output):
+        return (grad_output * -0.1)
+
+def grad_reverse(x):
+    return GradReverse()(x)
 
 
 class SimpleAutoEncoder(nn.Module):
@@ -111,8 +92,6 @@ class ATTFeedforward(torch.nn.Module):
         self.hidden_size = hidden_size
         self.ae_model = ae_model
 
-        self._rev = GradientReversal()
-
         self.f = torch.nn.Linear(self.input_size, self.hidden_size)
         self.f_relu = torch.nn.ReLU()
         self.f_dropout = torch.nn.Dropout(p=0.4)
@@ -155,7 +134,7 @@ class ATTFeedforward(torch.nn.Module):
         output = self.f_relu(output)
         f_relu = self.f_dropout(output)
 
-        output_rev = self._rev(f_relu)
+        output_rev = grad_reverse(f_relu)
         output_rev = self.reversal(output_rev)
         output_rev = self.reversal_relu(output_rev)
         output_rev = self.reversal_out(output_rev)
