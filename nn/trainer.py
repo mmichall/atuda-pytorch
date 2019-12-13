@@ -39,19 +39,20 @@ class AutoEncoderTrainer:
             print('+ \tepoch number: ' + str(epoch))
             for idx, inputs, labels, domain in train_data_generator:
                 _batch += 1
-                if type(labels) == list:
-                    labels = torch.stack(labels, dim=1)
+                # if type(labels) == list:
+                #     labels = torch.stack(labels, dim=1)
                 inputs, labels, domain = inputs.to(device, torch.float), labels.to(device, torch.float), domain.to(device, torch.float)
                 self.optimizer.zero_grad()
 
-                out, domain_out = self.model(inputs)
-                loss = self.criterion(out, domain_out, labels, domain)
+                out = self.model(inputs)
+                criterion = torch.nn.MSELoss()
+                loss = criterion(out, labels)
+                #loss = self.criterion(out, domain_out, labels, domain)
 
                 _loss.append(loss.item())
-                _loss_mean = round(mean(_loss) / _batch, 10)
+                _loss_mean = round(mean(_loss), 5)
                 sys.stdout.write(
-                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__,
-                                                         _loss_mean))
+                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__, _loss_mean))
                 loss.backward()
                 self.optimizer.step()
             if prev_loss <= _loss_mean:
@@ -67,6 +68,7 @@ class AutoEncoderTrainer:
                 break
 
             print('')
+            self.scheduler.step(mean(_loss))
         print("> Training is over. Thank you for your patience :).")
 
 
@@ -83,7 +85,6 @@ class DomainAdaptationTrainer:
         self.ae_model = ae_model
         self.epochs_no_improve = epochs_no_improve
         self.model.to(device)
-        self.calibrated_model = self.model
 
     def fit(self, training_loader: DataLoader, validation_loader: DataLoader, additional_training_data_set=None,
             target_generator=None, max_epochs=10, is_step2=False, _dict=None, calibrate=False):
@@ -100,16 +101,16 @@ class DomainAdaptationTrainer:
             batches = []
             # Init training data
             for idx, batch_one_hot, labels, src in training_loader:
-                batches.append((idx, batch_one_hot, labels, True))
+                batches.append((idx, batch_one_hot, labels, src, True))
 
             if additional_training_data_set is not None:
                 training_tgt_generator = additional_training_data_set
                 for idx, batch_one_hot, labels, src in training_tgt_generator:
-                    batches.append((idx, batch_one_hot, labels, False))
+                    batches.append((idx, batch_one_hot, labels, src, False))
 
             random.shuffle(batches)
 
-            for idx, input, labels, src in batches:
+            for idx, input, labels, src, loss_upd in batches:
                 n_batch += 1
 
                 if type(labels) == list:
@@ -117,19 +118,23 @@ class DomainAdaptationTrainer:
 
                 # CrossEntropyLoss does not expect a one-hot encoded vector as the target, but class indices
                 # max(1) will return the maximal value (and index in PyTorch) in this particular dimension.
-                input, labels_ = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long)
-                if self.ae_model is not None:
-                    input = self.ae_model(input)
+                input, labels_, src = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long), src.to(device, torch.float)
+                # if self.ae_model is not None:
+                #     input = self.ae_model(input)
                     #input = torch.cat([input, ae_output], 1)
 
                 self.optimizer.zero_grad()
 
-                f1, f2, ft = self.model(input)
+                f1, f2, ft, rev = self.model(input)
                 _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
 
-                if not is_step2 or not src:
+                if not is_step2 or not loss_upd:
                     _loss_t = self.criterion_t(ft, labels_)
                     _loss = _loss + _loss_t
+
+                if is_step2:
+                    _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
+                    _loss = _loss + _loss_rev
 
                 loss_f1f2.append(_loss.item())
                 # loss_t.append(_loss_t.item())
@@ -168,26 +173,25 @@ class DomainAdaptationTrainer:
                 prev_metric = _valid_acc
 
         # calibrating
-        if calibrate:
-            self.calibrated_model = ModelWithTemperature(self.model, self.ae_model)
-            self.calibrated_model.set_temperature(validation_loader)
-        else:
-            self.calibrated_model = self.model
+        # if calibrate:
+        #     self.calibrated_model = ModelWithTemperature(self.model, self.ae_model)
+        #     self.calibrated_model.set_temperature(validation_loader)
+        # else:
+        #     self.calibrated_model = self.model
 
 
     def valid(self, data_loader, data_loader_2=None, valid=False):
         with torch.set_grad_enabled(False):
             self.model.eval()
-            self.calibrated_model.eval()
             _acc_all = []
             _acc_all_tgt = []
             for idx, input, local_labels, src in data_loader:
                 local_labels = torch.stack(local_labels, dim=1)
                 input = input.to(device, torch.float)
-                if self.ae_model:
-                    input = self.ae_model(input)
+                # if self.ae_model:
+                #     input = self.ae_model(input)
                    # input = torch.cat([input, ae_output], 1)
-                f1, f2, ft = self.calibrated_model(input)
+                f1, f2, ft, rev = self.model(input)
                 if valid:
                     _acc_all.append(
                         (acc(F.softmax(f1, dim=1), local_labels) + acc(F.softmax(f2, dim=1), local_labels)) / 2)
@@ -197,10 +201,10 @@ class DomainAdaptationTrainer:
                 for idx, input, local_labels, src in data_loader_2:
                     local_labels = torch.stack(local_labels, dim=1)
                     input = input.to(device, torch.float)
-                    if self.ae_model:
-                        input = self.ae_model(input)
+                    # if self.ae_model:
+                    #     input = self.ae_model(input)
                     # input = torch.cat([input, ae_output], 1)
-                    f1, f2, ft = self.calibrated_model(input)
+                    f1, f2, ft, rev = self.model(input)
                     if valid:
                         _acc_all_tgt.append(
                             (acc(F.softmax(f1, dim=1), local_labels) + acc(F.softmax(f2, dim=1), local_labels)) / 2)
@@ -217,8 +221,8 @@ class DomainAdaptationTrainer:
                      iterations=20, max_epochs=3):
         # print(target_data_set.data)
         target_generator = DataLoader(target_data_set, batch_size=len(target_data_set))
-        valid_data = AmazonDomainDataSet()
-        valid_data.dict = target_generator.dataset.dict
+
+
         # src_generator = DataLoader(src_data_set, **train_params)
         idx_added = []
         training_tgt_data_set = AmazonDomainDataSet()
@@ -227,6 +231,8 @@ class DomainAdaptationTrainer:
         n_all = 0
 
         for _iter in range(iterations):
+            valid_data = AmazonDomainDataSet()
+            valid_data.dict = target_generator.dataset.dict
             # n_examples_per_iteration = int(training_generator.dataset.length / iterations)
             # training_generator.dataset.length = n_examples_per_iteration * (iterations - _iter)
             # training_generator = DataLoader(training_generator.dataset, shuffle=True, batch_size=training_generator.batch_size)
@@ -248,7 +254,6 @@ class DomainAdaptationTrainer:
             idxs = sorted(idxs.items(), key=operator.itemgetter(1))
             idxs.reverse()
 
-            most_confident_idxs = []
             most_confident_idxs = []
 
             for _i, _ in idxs:
@@ -276,9 +281,15 @@ class DomainAdaptationTrainer:
                         n_wrong_labeled += 1
                     item.sentiment = (1, 0) if f1_idx[_i] == 0 else (0, 1)
                     training_tgt_data_set.append(item)
-                    valid_data.append(item)
+
                 else:
                     pass
+
+            for _i, _ in idxs:
+                if _i not in idx_added:
+                    item = copy.deepcopy(target_generator.dataset.get(_i))
+                    item.sentiment = (1, 0) if f1_idx[_i] == 0 else (0, 1)
+                    valid_data.append(item)
 
             n_all_wrong_labeled += n_wrong_labeled
             n_all += n_all_qualified
@@ -288,8 +299,7 @@ class DomainAdaptationTrainer:
             #                                                                             target_data_set,
             #                                                                           train_params)
 
-            self.model = ATTFeedforward(1250, 50)
-            self.calibrated_model = self.model
+           # self.model.reset()
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001)
             self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=2)
 
@@ -312,8 +322,8 @@ class DomainAdaptationTrainer:
         with torch.set_grad_enabled(False):
             for idx, input, labels, src in data_generator:
                 input = input.to(device, torch.float)
-                if self.ae_model:
-                    input = self.ae_model(input)
+                # if self.ae_model:
+                #     input = self.ae_model(input)
                 # input = torch.cat([input, ae_output], 1)
-                f1, f2, ft = self.calibrated_model(input)
+                f1, f2, ft, rev = self.model(input)
                 return idx, F.softmax(f1, dim=1), F.softmax(f2, dim=1), F.softmax(ft, dim=1)

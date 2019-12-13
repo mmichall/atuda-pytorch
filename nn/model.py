@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn import BatchNorm1d
 from torch import nn, optim
+from torch.autograd import Function
 
 from nn.RevGrad import RevGrad
 
@@ -11,35 +12,113 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
+class GradReverse(Function):
+    def forward(self, x):
+        return x.view_as(x)
+
+    def backward(self, grad_output):
+        return (grad_output * -0.1)
+
+def grad_reverse(x):
+    return GradReverse()(x)
+
+
+class SimpleAutoEncoder(nn.Module):
+    def __init__(self, shape: tuple):
+        super(SimpleAutoEncoder, self).__init__()
+        self.train_mode = True
+        self.shape = shape
+
+       # self.reversal_layer = RevGrad()
+
+       # self.domain_linear = nn.Linear(250, 1)
+        #self.domain_classifier = nn.Sequential(GradientReversal(lambda_=0.0001), self.domain_linear)
+
+        self.encoder_modules = []
+        self.decoder_modules = []
+        for _i in range(len(shape)-1):
+            seq_list = []
+            seq_list.append(nn.Linear(shape[_i], shape[_i+1]))
+            if _i != len(shape)-2:
+                seq_list.append(nn.ReLU(True))
+          #  seq_list.append(nn.Dropout(p=0.3))
+            self.encoder_modules.append(nn.Sequential(*seq_list))
+
+        for _i in reversed(range(len(shape)-1)):
+            seq_list = []
+            seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
+            if _i != 0:
+                seq_list.append(nn.ReLU(True))
+                #seq_list.append(nn.Dropout(p=0.3))
+            #else:
+                #seq_list.append(nn.Sigmoid())
+            self.decoder_modules.append(nn.Sequential(*seq_list))
+
+        self.encoder = nn.Sequential(*self.encoder_modules)
+        self.decoder = nn.Sequential(*self.decoder_modules)
+
+        self.to(device)
+
+    def forward(self, x):
+    #    result = torch.empty(0).cuda()
+        if self.train_mode:
+            x = self.encoder(x)
+          #  domain_out = self.domain_classifier(x)
+            y = self.decoder(F.relu(x))
+            return F.sigmoid(y)#, domain_out
+        else:
+            return self.encoder(x)
+
+    def set_train_mode(self, switch):
+        self.train_mode = switch
+
+    def froze(self):
+        torch.set_grad_enabled(False)
+        self.eval()
+
+    def unfroze(self):
+        torch.set_grad_enabled(True)
+        self.train()
+
+    def summary(self):
+        print('> Model summary: \n{}'.format(self))
+        summary(self, input_size=(self.shape[0], ))
+
+
 class ATTFeedforward(torch.nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, ae_model=None):
         super(ATTFeedforward, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.ae_model = ae_model
 
         self.f = torch.nn.Linear(self.input_size, self.hidden_size)
         self.f_relu = torch.nn.ReLU()
-        self.f_dropout = torch.nn.Dropout(p=0.3)
+        self.f_dropout = torch.nn.Dropout(p=0.4)
         self.f_batchnorm = torch.nn.BatchNorm1d(50)
         # self.f_softmax = torch.nn.Softmax()
 
-        self.f1_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.reversal = torch.nn.Linear(250, self.hidden_size)
+        self.reversal_relu = torch.nn.ReLU()
+        self.reversal_out = torch.nn.Linear(self.hidden_size, 1)
+
+        self.f1_1 = torch.nn.Linear(250, self.hidden_size)
         self.f1_1_relu = torch.nn.ReLU()
-        self.f1_dropout = torch.nn.Dropout(p=0.2)
+        self.f1_dropout = torch.nn.Dropout(p=0.3)
         self.f1_batchnorm = BatchNorm1d(50)
-        self.f1_2 = torch.nn.Linear(self.hidden_size, 2)
+        self.f1_2 = torch.nn.Linear(self.hidden_size, 2) # tutaj moze popaczać
         self.f1_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f2_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.f2_1 = torch.nn.Linear(250, self.hidden_size)
         self.f2_1_relu = torch.nn.ReLU()
-        self.f2_dropout = torch.nn.Dropout(p=0.2)
+        self.f2_dropout = torch.nn.Dropout(p=0.3)
         self.f2_batchnorm = BatchNorm1d(50)
         self.f2_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f2_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f3_1 = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.f3_1 = torch.nn.Linear(250, self.hidden_size)
         self.f3_1_relu = torch.nn.ReLU()
-        self.f3_dropout = torch.nn.Dropout(p=0.2)
+        self.f3_dropout = torch.nn.Dropout(p=0.3)
         self.f3_batchnorm = BatchNorm1d(50)
         self.f3_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f3_2_softmax = torch.nn.Softmax(dim=0)
@@ -47,11 +126,18 @@ class ATTFeedforward(torch.nn.Module):
         self.to(device)
 
     def forward(self, x):
-        output = self.f(x)
-    #    output = self.f_batchnorm(output)
+        if self.ae_model is None:
+            output = self.f(x)
+        else:
+            output = self.ae_model(x)
+
         output = self.f_relu(output)
         f_relu = self.f_dropout(output)
 
+        output_rev = grad_reverse(f_relu)
+        output_rev = self.reversal(output_rev)
+        output_rev = self.reversal_relu(output_rev)
+        output_rev = self.reversal_out(output_rev)
 
         output1 = self.f1_1(f_relu)
  #       output1 = self.f1_batchnorm(output1)
@@ -67,7 +153,6 @@ class ATTFeedforward(torch.nn.Module):
         output2 = self.f2_1_relu(output2)
         output2 = self.f2_dropout(output2)
         output2 = self.f2_2(output2)
-
         #output2 = self.f2_2_softmax(output2)
 
         output3 = self.f3_1(f_relu)
@@ -75,14 +160,9 @@ class ATTFeedforward(torch.nn.Module):
         output3 = self.f3_1_relu(output3)
         output3 = self.f3_dropout(output3)
         output3 = self.f3_2(output3)
-
      #   output3 = self.f3_2_softmax(output3)
 
-        # ft_hidden = self.ft(f_relu)
-        # ft_relu = self.ft_relu(ft_hidden)
-        # #Ft_softmax = self.f1_softmax(Ft_relu)
-
-        return output1, output2, output3
+        return output1, output2, output3, output_rev
 
     def get_f1_1(self):
         return self.f1_1
@@ -90,67 +170,12 @@ class ATTFeedforward(torch.nn.Module):
     def get_f2_1(self):
         return self.f2_1
 
+    def reset(self):
+        self.__init__(self.input_size, self.hidden_size, self.ae_model)
+
     def summary(self):
         print('> Model summary: \n{}'.format(self))
         summary(self, input_size=(self.hidden_size,  self.input_size, ))
-
-
-class StackedAutoEncoder(nn.Module):
-    def __init__(self, shape: tuple):
-        super(StackedAutoEncoder, self).__init__()
-        self.train_mode = True
-        self.shape = shape
-
-        self.reversal_layer = RevGrad()
-        self.domain_classifier = nn.Linear(250, 1)
-        self.reversal = nn.Sequential(self.reversal_layer, self.domain_classifier)
-
-        self.encoder_modules = []
-        self.decoder_modules = []
-        for _i in range(len(shape)-1):
-            seq_list = []
-            seq_list.append(nn.Linear(shape[_i], shape[_i+1]))
-            seq_list.append(nn.ReLU(True))
-            self.encoder_modules.append(nn.Sequential(*seq_list))
-
-        for _i in reversed(range(len(shape)-1)):
-            seq_list = []
-            seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
-            if _i != 0:
-                seq_list.append(nn.ReLU(True))
-            else:
-                seq_list.append(nn.Sigmoid())
-            self.decoder_modules.append(nn.Sequential(*seq_list))
-
-        self.encoder = nn.Sequential(*self.encoder_modules)
-        self.decoder = nn.Sequential(*self.decoder_modules)
-
-        self.to(device)
-
-    def train_mode(self):
-        self.train()
-        self.train_mode = True
-
-    def froze(self):
-        self.eval()
-        self.train_mode = False
-
-    def forward(self, x):
-        result = torch.empty(0).cuda()
-        if not self.train_mode:
-            for layer in self.encoder:
-                x = layer(x)
-                result = torch.cat((result, x), 1)
-            return result
-        else:
-            x = self.encoder(x)
-            domain_out = self.reversal(x)
-            y = self.decoder(x)
-        return y, domain_out
-
-    def summary(self):
-        print('> Model summary: \n{}'.format(self))
-        summary(self, input_size=(self.shape[0], ))
 
 
 class ModelWithTemperature(nn.Module):
