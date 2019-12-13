@@ -13,14 +13,17 @@ device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
 class GradReverse(Function):
+    def __init__(self, lambd):
+        self.lambd = lambd
+
     def forward(self, x):
         return x.view_as(x)
 
     def backward(self, grad_output):
-        return (grad_output * -0.1)
+        return (grad_output * -self.lambd)
 
-def grad_reverse(x):
-    return GradReverse()(x)
+def grad_reverse(x, lambd):
+    return GradReverse(lambd)(x)
 
 
 class SimpleAutoEncoder(nn.Module):
@@ -28,6 +31,11 @@ class SimpleAutoEncoder(nn.Module):
         super(SimpleAutoEncoder, self).__init__()
         self.train_mode = True
         self.shape = shape
+        self.lambd = 1
+
+        self.domain_c_1 = torch.nn.Linear(250, 50)
+        self.domain_relu_1 = torch.nn.ReLU()
+        self.domain_c_out = torch.nn.Linear(50, 1)
 
        # self.reversal_layer = RevGrad()
 
@@ -36,36 +44,38 @@ class SimpleAutoEncoder(nn.Module):
 
         self.encoder_modules = []
         self.decoder_modules = []
+        self.domain_modules = [self.domain_c_1, self.domain_relu_1, self.domain_c_out]
         for _i in range(len(shape)-1):
-            seq_list = []
-            seq_list.append(nn.Linear(shape[_i], shape[_i+1]))
+            self.encoder_modules.append(nn.Linear(shape[_i], shape[_i+1]))
             if _i != len(shape)-2:
-                seq_list.append(nn.ReLU(True))
+                self.encoder_modules.append(nn.ReLU(True))
           #  seq_list.append(nn.Dropout(p=0.3))
-            self.encoder_modules.append(nn.Sequential(*seq_list))
 
         for _i in reversed(range(len(shape)-1)):
-            seq_list = []
-            seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
+            self.decoder_modules.append(nn.Linear(shape[_i+1], shape[_i]))
             if _i != 0:
-                seq_list.append(nn.ReLU(True))
+                self.decoder_modules.append(nn.ReLU(True))
                 #seq_list.append(nn.Dropout(p=0.3))
             #else:
                 #seq_list.append(nn.Sigmoid())
-            self.decoder_modules.append(nn.Sequential(*seq_list))
 
         self.encoder = nn.Sequential(*self.encoder_modules)
         self.decoder = nn.Sequential(*self.decoder_modules)
+        self.domain_classifier = nn.Sequential(*self.domain_modules)
 
         self.to(device)
 
     def forward(self, x):
     #    result = torch.empty(0).cuda()
         if self.train_mode:
-            x = self.encoder(x)
+            encoded = self.encoder(x)
+
+            rev = grad_reverse(F.relu(encoded), self.lambd)
+            domain_out = self.domain_classifier(rev)
+
           #  domain_out = self.domain_classifier(x)
-            y = self.decoder(F.relu(x))
-            return F.sigmoid(y)#, domain_out
+            y = self.decoder(F.relu(encoded))
+            return y, domain_out
         else:
             return self.encoder(x)
 
@@ -73,12 +83,17 @@ class SimpleAutoEncoder(nn.Module):
         self.train_mode = switch
 
     def froze(self):
-        torch.set_grad_enabled(False)
+        for p in self.parameters():
+            p.requires_grad = False
         self.eval()
 
     def unfroze(self):
-        torch.set_grad_enabled(True)
+        for p in self.parameters():
+            p.requires_grad = True
         self.train()
+
+    def set_lambda(self, lambd):
+        self.lambd = lambd
 
     def summary(self):
         print('> Model summary: \n{}'.format(self))

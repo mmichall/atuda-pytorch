@@ -13,48 +13,88 @@ from data_set import AmazonDomainDataSet, train_valid_target_split
 from nn.model import ModelWithTemperature, ATTFeedforward
 from utils.measure import acc
 from torch.utils.data import DataLoader
+from torch.nn import Linear
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
 class AutoEncoderTrainer:
-    def __init__(self, model, criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
+    def __init__(self, model, criterion, c_optimizer, d_optimizer, f_optimizer, c_scheduler, d_scheduler, max_epochs, epochs_no_improve=3):
         self.model = model
-        self.criterion = criterion
-        self.optimizer = optimizer
+       # self.criterion = criterion
+        self.c_optimizer = c_optimizer
+        self.d_optimizer = d_optimizer
+        self.f_optimizer = f_optimizer
         self.max_epochs = max_epochs
-        self.scheduler = scheduler
+        self.c_scheduler = c_scheduler
+        self.d_scheduler = d_scheduler
         self.epochs_no_improve = epochs_no_improve
 
     def fit(self, train_data_generator):
         print("> Training is running...")
         self.model.train()
+
+        criterion = torch.nn.BCEWithLogitsLoss()
+        d_criterion = torch.nn.BCEWithLogitsLoss()
+
         for epoch in range(self.max_epochs):
             _loss = []
+            _loss_d = []
             _batch = 0
             prev_loss = 999
             prev_model = None
             batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
             print('+ \tepoch number: ' + str(epoch))
+            num_steps =len(train_data_generator)
             for idx, inputs, labels, domain in train_data_generator:
                 _batch += 1
+                # update lambda and learning rate as suggested in the paper
+                p = float(_batch) / num_steps
+                lambd = 2. / (1. + np.exp(-10. * p)) - 1
+                lr = 0.01 / (1. + 10 * p) ** 0.75
+                self.d_optimizer.lr = lr
+                self.c_optimizer.lr = lr
+                self.f_optimizer.lr = lr
+                self.model.set_lambda(lambd)
+
+                self.c_optimizer.zero_grad()
+                self.f_optimizer.zero_grad()
+
                 # if type(labels) == list:
                 #     labels = torch.stack(labels, dim=1)
                 inputs, labels, domain = inputs.to(device, torch.float), labels.to(device, torch.float), domain.to(device, torch.float)
-                self.optimizer.zero_grad()
 
-                out = self.model(inputs)
-                criterion = torch.nn.MSELoss()
-                loss = criterion(out, labels)
-                #loss = self.criterion(out, domain_out, labels, domain)
+                # Forward propagation
+                out, d_out = self.model(inputs)
 
-                _loss.append(loss.item())
+                # Backpropagation
+                c_loss = criterion(out, labels)
+                c_loss.backward(retain_graph=True)
+
+                self.c_optimizer.step()
+                self.f_optimizer.step()
+
+                self.d_optimizer.zero_grad()
+                self.f_optimizer.zero_grad()
+
+                #  Domain adaptation regularizer from current domain
+                d_loss = d_criterion(torch.squeeze(d_out), torch.squeeze(domain))
+                d_loss.backward(retain_graph = True)
+
+                self.d_optimizer.step()
+                self.f_optimizer.step()
+
+                _loss.append(c_loss.item())
                 _loss_mean = round(mean(_loss), 5)
+
+                _loss_d.append(d_loss.item())
+                _loss_mean_d = round(mean(_loss_d), 5)
                 sys.stdout.write(
-                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__, _loss_mean))
-                loss.backward()
-                self.optimizer.step()
+                    '\r+\tbatch: {} / {}, {}: {}, {}: {}'.format(_batch, batches_n, criterion.__class__.__name__, _loss_mean, d_criterion.__class__.__name__, _loss_mean_d))
+
+                self.c_optimizer.step()
+                self.d_optimizer.step()
             if prev_loss <= _loss_mean:
                 n_epochs_stop += 1
             else:
@@ -68,7 +108,8 @@ class AutoEncoderTrainer:
                 break
 
             print('')
-            self.scheduler.step(mean(_loss))
+            # self.c_scheduler.step(mean(_loss))
+            # self.d_scheduler.step(mean(_loss))
         print("> Training is over. Thank you for your patience :).")
 
 
@@ -132,9 +173,9 @@ class DomainAdaptationTrainer:
                     _loss_t = self.criterion_t(ft, labels_)
                     _loss = _loss + _loss_t
 
-                if is_step2:
-                    _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
-                    _loss = _loss + _loss_rev
+                # if is_step2:
+                #     _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
+                #     _loss = _loss + _loss_rev
 
                 loss_f1f2.append(_loss.item())
                 # loss_t.append(_loss_t.item())

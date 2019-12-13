@@ -21,8 +21,12 @@ def run(args):
         ae_model = SimpleAutoEncoder(ast.literal_eval(args.autoencoder_shape))
         ae_model.summary()
 
-        optimizer = torch.optim.Adam(ae_model.parameters(), lr=args.learning_rate)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
+        c_optimizer = torch.optim.SGD(ae_model.decoder.parameters(), lr=args.learning_rate)
+        d_optimizer = torch.optim.SGD(ae_model.domain_classifier.parameters(), lr=args.learning_rate)
+        f_optimizer = torch.optim.SGD(ae_model.encoder.parameters(), lr=args.learning_rate)
+
+        c_scheduler = ReduceLROnPlateau(c_optimizer, mode='min', factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
+        d_scheduler = ReduceLROnPlateau(d_optimizer, mode='min', factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
         #criterion = args.loss
         criterion = ReversalLoss()
 
@@ -30,7 +34,7 @@ def run(args):
         # words_to_reconstruct = get_unique_per_set_words(src_domain_data_set, tgt_domain_data_set)
 
         data_generator = as_one_dataloader(args.src_domain, args.tgt_domain, train_params, denoising_factor=args.denoising_factor)#,  words_to_reconstruct=words_to_reconstruct)
-        trainer = AutoEncoderTrainer(ae_model, criterion, optimizer, scheduler, args.max_epochs, epochs_no_improve=args.epochs_no_improve)
+        trainer = AutoEncoderTrainer(ae_model, criterion, c_optimizer, d_optimizer, f_optimizer, c_scheduler, d_scheduler, args.max_epochs, epochs_no_improve=args.epochs_no_improve)
         trainer.fit(data_generator)
         torch.save(ae_model.state_dict(), args.ae_model_file)
         print('Model was saved in {} file.'.format(args.ae_model_file))
@@ -43,7 +47,9 @@ def run(args):
             ae_model = SimpleAutoEncoder(ast.literal_eval(args.autoencoder_shape))
             ae_model.load_state_dict(torch.load(args.auto_encoder_embedding))
             ae_model.set_train_mode(False)
-            ae_model.unfroze()
+            # don't froze the AutoEncoder!
+            # ae_model.froze()
+            ae_model.eval()
 
         attff_model = ATTFeedforward(args.attff_input_size, args.attff_hidden_size, ae_model)
         attff_model.summary()
@@ -99,17 +105,17 @@ if __name__ == '__main__':
     parser.add_argument('--tgt_domain', required=False, help='the target domain.', default='kitchen')
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='ATTFeedforward')
+    parser.add_argument('--model', required=False, default='AutoEncoder')
     parser.add_argument('--max_epochs', required=False, type=int, default=100)
     parser.add_argument('--train_batch_size', required=False, type=int, default=8)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
-    parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-03)
+    parser.add_argument('--learning_rate', required=False, type=float, default=1.0)
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.5)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
-    parser.add_argument('--denoising_factor', required=False, type=float, default=0.0)
+    parser.add_argument('--denoising_factor', required=False, type=float, default=0.5)
     parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
-    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_500.pt')
+    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/reversal_auto_encoder_5000_500.pt')
     parser.add_argument('--load_attnn_model', required=False, type=bool, default=False)
     parser.add_argument('--pseudo_label_iterations', required=False, type=int, default=10)
 
@@ -117,7 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('--autoencoder_shape', required=False, default='(5000,500,250)')
     parser.add_argument('--attff_input_size', required=False, type=int, default=5000)
     parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
-    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500.pt')
+    parser.add_argument('--ae_model_file', required=False, default='tmp/reversal_auto_encoder_5000_500.pt')
     parser.add_argument('--attnn_model_file', required=False, default='tmp/attnn_model_{}_{}.pt')
 
     args = parser.parse_args()

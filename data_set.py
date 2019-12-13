@@ -105,7 +105,7 @@ def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_
                       words_to_reconstruct=None) -> DataLoader:
     src_domain_data_set, tgt_domain_data_set = load_data(src_domain, tgt_domain)
 
-    data_set = merge([src_domain_data_set, tgt_domain_data_set])
+    data_set = merge([src_domain_data_set, src_domain_data_set, src_domain_data_set, tgt_domain_data_set])
     data_set.dict = src_domain_data_set.dict
     data_set.denoising_factor = denoising_factor
     data_set.words_to_reconstruct = words_to_reconstruct
