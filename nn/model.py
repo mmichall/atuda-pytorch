@@ -12,34 +12,18 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
-class GradientReversalFunction(Function):
-    """
-    Gradient Reversal Layer from:
-    Unsupervised Domain Adaptation by Backpropagation (Ganin & Lempitsky, 2015)
-    Forward pass is the identity function. In the backward pass,
-    the upstream gradients are multiplied by -lambda (i.e. gradient is reversed)
-    """
-
-    @staticmethod
-    def forward(ctx, x, lambda_):
-        ctx.lambda_ = lambda_
-        return x.clone()
-
-    @staticmethod
-    def backward(ctx, grads):
-        lambda_ = ctx.lambda_
-        lambda_ = grads.new_tensor(lambda_)
-        dx = -lambda_ * grads
-        return dx, None
-
-
-class GradientReversal(torch.nn.Module):
-    def __init__(self, lambda_=1):
-        super(GradientReversal, self).__init__()
-        self.lambda_ = lambda_
+class GradReverse(Function):
+    def __init__(self, lambd):
+        self.lambd = lambd
 
     def forward(self, x):
-        return GradientReversalFunction.apply(x, self.lambda_)
+        return x.view_as(x)
+
+    def backward(self, grad_output):
+        return (grad_output * -self.lambd)
+
+def grad_reverse(x, lambd):
+    return GradReverse(lambd)(x)
 
 
 class SimpleAutoEncoder(nn.Module):
@@ -47,11 +31,9 @@ class SimpleAutoEncoder(nn.Module):
         super(SimpleAutoEncoder, self).__init__()
         self.train_mode = True
         self.shape = shape
+        self.lambd = 0
 
-       # self.reversal_layer = RevGrad()
-
-       # self.domain_linear = nn.Linear(250, 1)
-        #self.domain_classifier = nn.Sequential(GradientReversal(lambda_=0.0001), self.domain_linear)
+        self.domain_linear = nn.Linear(250, 1)
 
         self.encoder_modules = []
         self.decoder_modules = []
@@ -82,9 +64,10 @@ class SimpleAutoEncoder(nn.Module):
     #    result = torch.empty(0).cuda()
         if self.train_mode:
             x = self.encoder(x)
-          #  domain_out = self.domain_classifier(x)
+            domain_out = self.domain_linear(grad_reverse(x, self.lambd))
             y = self.decoder(F.relu(x))
-            return F.sigmoid(y)#, domain_out
+           # return F.sigmoid(y)#, domain_out
+            return y, domain_out
         else:
             return self.encoder(x)
 
@@ -111,12 +94,10 @@ class ATTFeedforward(torch.nn.Module):
         self.hidden_size = hidden_size
         self.ae_model = ae_model
 
-        self._rev = GradientReversal()
-
         self.f = torch.nn.Linear(self.input_size, self.hidden_size)
         self.f_relu = torch.nn.ReLU()
         self.f_dropout = torch.nn.Dropout(p=0.4)
-        self.f_batchnorm = torch.nn.BatchNorm1d(50)
+      #  self.f_batchnorm = torch.nn.BatchNorm1d(50)
         # self.f_softmax = torch.nn.Softmax()
 
         self.reversal = torch.nn.Linear(250, self.hidden_size)
@@ -155,10 +136,10 @@ class ATTFeedforward(torch.nn.Module):
         output = self.f_relu(output)
         f_relu = self.f_dropout(output)
 
-        output_rev = self._rev(f_relu)
-        output_rev = self.reversal(output_rev)
-        output_rev = self.reversal_relu(output_rev)
-        output_rev = self.reversal_out(output_rev)
+        # output_rev = self._rev(f_relu)
+        # output_rev = self.reversal(output_rev)
+        # output_rev = self.reversal_relu(output_rev)
+        # output_rev = self.reversal_out(output_rev)
 
         output1 = self.f1_1(f_relu)
  #       output1 = self.f1_batchnorm(output1)
@@ -183,7 +164,7 @@ class ATTFeedforward(torch.nn.Module):
         output3 = self.f3_2(output3)
      #   output3 = self.f3_2_softmax(output3)
 
-        return output1, output2, output3, output_rev
+        return output1, output2, output3, 0#, output_rev
 
     def get_f1_1(self):
         return self.f1_1
@@ -196,7 +177,7 @@ class ATTFeedforward(torch.nn.Module):
 
     def summary(self):
         print('> Model summary: \n{}'.format(self))
-        summary(self, input_size=(self.hidden_size,  self.input_size, ))
+      #  summary(self, input_size=(self.hidden_size,  self.input_size, ))
 
 
 class ModelWithTemperature(nn.Module):

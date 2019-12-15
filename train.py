@@ -99,14 +99,14 @@ if __name__ == '__main__':
     parser.add_argument('--tgt_domain', required=False, help='the target domain.', default='kitchen')
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='ATTFeedforward')
-    parser.add_argument('--max_epochs', required=False, type=int, default=100)
+    parser.add_argument('--model', required=False, default='AutoEncoder')
+    parser.add_argument('--max_epochs', required=False, type=int, default=300)
     parser.add_argument('--train_batch_size', required=False, type=int, default=8)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
     parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-03)
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.5)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
-    parser.add_argument('--denoising_factor', required=False, type=float, default=0.0)
+    parser.add_argument('--denoising_factor', required=False, type=float, default=0.5)
     parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
     parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_500.pt')

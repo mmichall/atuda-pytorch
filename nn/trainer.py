@@ -30,31 +30,47 @@ class AutoEncoderTrainer:
     def fit(self, train_data_generator):
         print("> Training is running...")
         self.model.train()
+
+        criterion = torch.nn.BCEWithLogitsLoss()
+        criterion_domain = torch.nn.BCEWithLogitsLoss()
         for epoch in range(self.max_epochs):
             _loss = []
+            _loss_domain = []
             _batch = 0
             prev_loss = 999
             prev_model = None
             batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
             print('+ \tepoch number: ' + str(epoch))
-            for idx, inputs, labels, domain in train_data_generator:
+            for idx, inputs, labels, domain_gt in train_data_generator:
                 _batch += 1
                 # if type(labels) == list:
                 #     labels = torch.stack(labels, dim=1)
-                inputs, labels, domain = inputs.to(device, torch.float), labels.to(device, torch.float), domain.to(device, torch.float)
+                inputs, labels, domain_gt = inputs.to(device, torch.float), labels.to(device, torch.float), domain_gt.to(device, torch.float)
                 self.optimizer.zero_grad()
 
-                out = self.model(inputs)
-                criterion = torch.nn.MSELoss()
-                loss = criterion(out, labels)
-                #loss = self.criterion(out, domain_out, labels, domain)
+                out, domain = self.model(inputs)
 
+                loss = criterion(out, labels)
                 _loss.append(loss.item())
-                _loss_mean = round(mean(_loss), 5)
-                sys.stdout.write(
-                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__, _loss_mean))
-                loss.backward()
+
+                loss.backward(retain_graph=True)
                 self.optimizer.step()
+
+                # loss_domain = criterion_domain(torch.squeeze(domain), torch.squeeze(domain_gt))
+                # _loss_domain.append(loss_domain.item())
+                #
+                # loss_domain.backward()
+                # self.optimizer.step()
+                #
+                # p = float(_batch) / batches_n
+                # lambd = 2. / (1. + np.exp(-10. * p)) - 1
+                # self.model.lambd = lambd
+
+                _loss_mean = round(mean(_loss), 5)
+                # _loss_mean_domain = round(mean(_loss_domain), 5)
+                sys.stdout.write(
+                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__,
+                                                         _loss_mean))
             if prev_loss <= _loss_mean:
                 n_epochs_stop += 1
             else:
@@ -127,7 +143,7 @@ class DomainAdaptationTrainer:
 
                 f1, f2, ft, rev = self.model(input)
                 _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
-                _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
+          #      _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
 
                 if not is_step2 or not loss_upd:
                     _loss_t = self.criterion_t(ft, labels_)
@@ -231,8 +247,8 @@ class DomainAdaptationTrainer:
         n_all = 0
 
         for _iter in range(iterations):
-            valid_data = AmazonDomainDataSet()
-            valid_data.dict = target_generator.dataset.dict
+            # valid_data = AmazonDomainDataSet()
+            # valid_data.dict = target_generator.dataset.dict
             # n_examples_per_iteration = int(training_generator.dataset.length / iterations)
             # training_generator.dataset.length = n_examples_per_iteration * (iterations - _iter)
             # training_generator = DataLoader(training_generator.dataset, shuffle=True, batch_size=training_generator.batch_size)
@@ -289,7 +305,7 @@ class DomainAdaptationTrainer:
                 if _i not in idx_added:
                     item = copy.deepcopy(target_generator.dataset.get(_i))
                     item.sentiment = (1, 0) if f1_idx[_i] == 0 else (0, 1)
-                    valid_data.append(item)
+                    # valid_data.append(item)
 
             n_all_wrong_labeled += n_wrong_labeled
             n_all += n_all_qualified
@@ -305,7 +321,7 @@ class DomainAdaptationTrainer:
 
             # train_tgt_generator, valid_tgt_generator, _ = train_valid_target_split(training_tgt_data_set, training_tgt_data_set, train_params)
 
-            valid_generator = DataLoader(valid_data, shuffle=True, batch_size=len(valid_data))
+            # valid_generator = DataLoader(valid_data, shuffle=True, batch_size=len(valid_data))
             # src_generator.dataset.length = (iterations - (_iter + 1)) * int((src_generator.dataset.length / iterations))
             self.fit(training_generator, valid_generator,
                      additional_training_data_set=DataLoader(training_tgt_data_set, shuffle=True,
