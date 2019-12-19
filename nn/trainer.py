@@ -48,7 +48,7 @@ class AutoEncoderTrainer:
                 inputs, labels, domain_gt = inputs.to(device, torch.float), labels.to(device, torch.float), domain_gt.to(device, torch.float)
                 self.optimizer.zero_grad()
 
-                out, domain = self.model(inputs)
+                out = self.model(inputs)
 
                 loss = criterion(out, labels)
                 _loss.append(loss.item())
@@ -315,7 +315,7 @@ class DomainAdaptationTrainer:
             #                                                                             target_data_set,
             #                                                                           train_params)
 
-           # self.model.reset()
+            # self.model.reset()
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001)
             self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=2)
 
