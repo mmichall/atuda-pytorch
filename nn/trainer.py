@@ -10,6 +10,7 @@ from torch.autograd import Variable
 import math
 import torch.nn.functional as F
 from data_set import AmazonDomainDataSet, train_valid_target_split
+from nn.loss import KLDivergenceLoss
 from nn.model import ModelWithTemperature, ATTFeedforward
 from utils.measure import acc
 from torch.utils.data import DataLoader
@@ -31,6 +32,8 @@ class AutoEncoderTrainer:
         print("> Training is running...")
         self.model.train()
 
+        kl_criterion = KLDivergenceLoss()
+
         criterion = torch.nn.BCEWithLogitsLoss()
         criterion_domain = torch.nn.BCEWithLogitsLoss()
         for epoch in range(self.max_epochs):
@@ -48,13 +51,16 @@ class AutoEncoderTrainer:
                 inputs, labels, domain_gt = inputs.to(device, torch.float), labels.to(device, torch.float), domain_gt.to(device, torch.float)
                 self.optimizer.zero_grad()
 
-                out = self.model(inputs)
+                out, encoded_x = self.model(inputs)
 
                 loss = criterion(out, labels)
                 _loss.append(loss.item())
 
                 loss.backward(retain_graph=True)
                 self.optimizer.step()
+
+                encoded_x
+                loss_kl = kl_criterion()
 
                 # loss_domain = criterion_domain(torch.squeeze(domain), torch.squeeze(domain_gt))
                 # _loss_domain.append(loss_domain.item())

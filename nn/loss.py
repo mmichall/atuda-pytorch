@@ -1,9 +1,11 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+import numpy as np
 
 
 class MultiViewLoss(nn.Module):
+
     def __init__(self):
         super(MultiViewLoss, self).__init__()
 
@@ -20,6 +22,15 @@ class MultiViewLoss(nn.Module):
         return torch.mean(f1_ce + f2_ce) + torch.abs(torch.mm(w1, w2)) + 0.001 * diff
 
 
+class KLDivergenceLoss(nn.Module):
+
+    def __init__(self):
+        super(KLDivergenceLoss, self).__init__()
+
+    def forward(self, p, q):
+        return KL(p, q)
+
+
 class ReversalLoss(nn.Module):
     def __init__(self):
         super(ReversalLoss, self).__init__()
@@ -31,3 +42,16 @@ class ReversalLoss(nn.Module):
         domain_err = F.binary_cross_entropy_with_logits(rev_out, rev_y, reduction='mean')
 
         return domain_err
+
+
+def KL(P, Q):
+    """ Epsilon is used here to avoid conditional code for
+    checking that neither P nor Q is equal to 0. """
+    epsilon = 0.00001
+
+    # You may want to instead make copies to avoid changing the np arrays.
+    P = P + epsilon
+    Q = Q + epsilon
+
+    divergence = np.sum(P * np.log(P / Q))
+    return divergence
