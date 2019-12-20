@@ -9,7 +9,7 @@ from utils.reader import AmazonDomainDataReader
 
 class AmazonDomainDataSet(dataset.Dataset):
 
-    def __init__(self, domain: str = None, is_labeled=False, denoising_factor=0., words_to_reconstruct=None):
+    def __init__(self, domain: str = None, is_labeled=False, denoising_factor=0., words_to_reconstruct=None, return_input=False):
         self.domain = domain
         self.data: pd.DataFrame = AmazonDomainDataReader.read(domain, is_labeled)
         self.dict = {}
@@ -17,6 +17,7 @@ class AmazonDomainDataSet(dataset.Dataset):
         self.denoising_factor = denoising_factor
         self.length = len(self.data)
         self.is_labeled = is_labeled
+        self.return_input = return_input
 
     def __len__(self):
         return self.length
@@ -26,12 +27,13 @@ class AmazonDomainDataSet(dataset.Dataset):
         _doc2one_hot = doc2one_hot(item.acl_processed, self.dict)
 
         # TODO: Such a dirty code! Has to be refactored immediately!
-        if self.denoising_factor != 0.0:
+        if self.return_input:
             _denoised = copy.deepcopy(_doc2one_hot)
             for i in range(len(_denoised)):
                 if random.random() < self.denoising_factor:
                     _denoised[i] = 0
             return index, _denoised, _doc2one_hot, item.src
+            #return index, _denoised, _doc2one_hot, item.sentiment
 
         if self.words_to_reconstruct is not None:
             _denoised = doc2one_hot(item.acl_processed, self.dict, self.words_to_reconstruct)
@@ -102,21 +104,22 @@ def train_valid_target_split(src_domain_data_set, tgt_domain_data_set, params_tr
 
 
 def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_factor=0.0,
-                      words_to_reconstruct=None) -> DataLoader:
-    src_domain_data_set, tgt_domain_data_set = load_data(src_domain, tgt_domain)
+                      words_to_reconstruct=None, return_input=False) -> DataLoader:
+    src_domain_data_set, tgt_domain_data_set = load_data(src_domain, tgt_domain, return_input=return_input)
 
     data_set = merge([src_domain_data_set, tgt_domain_data_set])
     data_set.dict = src_domain_data_set.dict
     data_set.denoising_factor = denoising_factor
     data_set.words_to_reconstruct = words_to_reconstruct
+    data_set.return_input = return_input
     data_set.summary('Unsupervised data set')
 
-    return DataLoader(data_set, **params_train)
+    return DataLoader(src_domain_data_set, **params_train)
 
 
-def load_data(src_domain, tgt_domain, verbose=False):
-    src_domain_data_set = AmazonDomainDataSet(src_domain, True)
-    tgt_domain_data_set = AmazonDomainDataSet(tgt_domain, False)
+def load_data(src_domain, tgt_domain, verbose=False, return_input=False):
+    src_domain_data_set = AmazonDomainDataSet(src_domain, True, return_input=return_input)
+    tgt_domain_data_set = AmazonDomainDataSet(tgt_domain, False, return_input=return_input)
 
     dictionary = build_dictionary([src_domain_data_set, tgt_domain_data_set], 5000)
 

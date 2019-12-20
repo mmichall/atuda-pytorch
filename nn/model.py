@@ -45,17 +45,17 @@ class SimpleAutoEncoder(nn.Module):
           #  seq_list.append(nn.Dropout(p=0.3))
             self.encoder_modules.append(nn.Sequential(*seq_list))
 
-        # for _i in reversed(range(len(shape)-1)):
-        #     seq_list = []
-        #     seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
-        #     if _i != 0:
-        #         seq_list.append(nn.ReLU(True))
-        #         #seq_list.append(nn.Dropout(p=0.3))
-        #     #else:
-        #         #seq_list.append(nn.Sigmoid())
-        #     self.decoder_modules.append(nn.Sequential(*seq_list))
+        for _i in reversed(range(len(shape)-1)):
+            seq_list = []
+            seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
+            if _i != 0:
+                seq_list.append(nn.ReLU(True))
+                #seq_list.append(nn.Dropout(p=0.3))
+            #else:
+                #seq_list.append(nn.Sigmoid())
+            self.decoder_modules.append(nn.Sequential(*seq_list))
 
-        self.decoder_modules.append(nn.Sequential(nn.Linear(250, 5000)))
+        #self.decoder_modules.append(nn.Sequential(nn.Linear(250, 5000)))
 
         self.encoder = nn.Sequential(*self.encoder_modules)
         self.decoder = nn.Sequential(*self.decoder_modules)

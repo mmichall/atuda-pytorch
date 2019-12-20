@@ -19,6 +19,100 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
+class AEGeneratorTrainer:
+    def __init__(self, model, reconstruction_criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
+        self.model = model
+        self.reconstruction_criterion = reconstruction_criterion
+        self.optimizer = optimizer
+        self.max_epochs = max_epochs
+        self.scheduler = scheduler
+        self.epochs_no_improve = epochs_no_improve
+
+    def fit(self, src_data_generator, tgt_data_generator):
+        self.model.train()
+
+        i_epoch = 0
+        n_batches = len(src_data_generator)
+        criterion = torch.nn.BCEWithLogitsLoss()
+        for epoch in range(self.max_epochs):
+
+            i_batch = 0
+            i_epoch += 1
+            reconstruction_losses = []
+            label_losses = []
+            acces = []
+            tgt_acces = []
+            tgt_iter = iter(tgt_data_generator)
+
+            for _, inputs, y_inputs, sentiment in src_data_generator:
+                i_batch += 1
+                _, tgt_inputs, tgt_labels, tgt_sentiment = next(tgt_iter)
+
+                if type(y_inputs) == list:
+                    y_inputs = torch.stack(y_inputs, dim=1)
+                if type(sentiment) == list:
+                    sentiment = torch.stack(sentiment, dim=1)
+                if type(tgt_sentiment) == list:
+                    tgt_sentiment = torch.stack(tgt_sentiment, dim=1)
+                inputs, tgt_inputs, y_inputs, sentiment, tgt_sentiment = inputs.to(device, torch.float), tgt_inputs.to(device, torch.float), y_inputs.to(device, torch.float), sentiment.to(device, torch.float), tgt_sentiment.to(device, torch.float)
+
+                # SRC feed forward pass
+                self.optimizer.zero_grad()
+
+                reconstructed_x, label_class = self.model(inputs)
+                src_reconstruction_loss = criterion(reconstructed_x, y_inputs)
+
+                # TGT feed forward pass
+                # reconstructed_x, label_class = self.model(tgt_inputs)
+                # tgt_reconstruction_loss = criterion(torch.sigmoid(reconstructed_x), y_inputs)
+                #
+                # reconstruction_loss = src_reconstruction_loss + tgt_reconstruction_loss
+
+                reconstruction_losses.append(src_reconstruction_loss.item())
+
+                src_reconstruction_loss.backward()
+                self.optimizer.step()
+
+                # self.optimizer.zero_grad()
+                #
+                # reconstructed_x, label_class = self.model(inputs)
+                #
+                # label_class = torch.squeeze(label_class)
+                # sentiment = torch.max(sentiment, 1)[1].to(dtype=torch.float)
+                #
+                # label_loss = F.binary_cross_entropy_with_logits(label_class, sentiment)
+                # label_losses.append(label_loss.item())
+                #
+                # label_loss.backward(retain_graph=True)
+                # self.optimizer.step()
+
+                sys.stdout.write('\r+\tepoch: %d / %d, batch: %d / %d, %s: %4.4f, %4.4f' % (i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses), mean([1])))
+
+            print('')
+
+            # acces = []
+            # self.model.eval()
+            # for _, inputs, y_inputs, sentiment in tgt_data_generator:
+            #     if type(y_inputs) == list:
+            #         y_inputs = torch.stack(y_inputs, dim=1)
+            #     if type(sentiment) == list:
+            #         sentiment = torch.stack(sentiment, dim=1)
+            #
+            #     inputs, y_inputs, sentiment = inputs.to(device, torch.float), y_inputs.to(device, torch.float), sentiment.to(device, torch.float)
+            #
+            #     reconstructed_x, label_class = self.model(inputs)
+            #
+            #     label_class = torch.squeeze(label_class)
+            #     sentiment = torch.max(sentiment, 1)[1].to(dtype=torch.float)
+            #     acces.append(self.valid(label_class, sentiment))
+            #
+            # print('TGT Acc: %4.4f' % mean(acces))
+
+    def valid(self, output, ground_truth):
+
+        return acc(output, ground_truth)
+
+
 class AutoEncoderTrainer:
     def __init__(self, model, criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
         self.model = model
@@ -46,21 +140,20 @@ class AutoEncoderTrainer:
             print('+ \tepoch number: ' + str(epoch))
             for idx, inputs, labels, domain_gt in train_data_generator:
                 _batch += 1
-                # if type(labels) == list:
-                #     labels = torch.stack(labels, dim=1)
+                if type(labels) == list:
+                    labels = torch.stack(labels, dim=1)
                 inputs, labels, domain_gt = inputs.to(device, torch.float), labels.to(device, torch.float), domain_gt.to(device, torch.float)
                 self.optimizer.zero_grad()
 
-                out, encoded_x = self.model(inputs)
+                out = self.model(inputs)
 
                 loss = criterion(out, labels)
                 _loss.append(loss.item())
 
-                loss.backward(retain_graph=True)
+                loss.backward()
                 self.optimizer.step()
 
-                encoded_x
-                loss_kl = kl_criterion()
+                # loss_kl = kl_criterion()
 
                 # loss_domain = criterion_domain(torch.squeeze(domain), torch.squeeze(domain_gt))
                 # _loss_domain.append(loss_domain.item())
@@ -149,7 +242,7 @@ class DomainAdaptationTrainer:
 
                 f1, f2, ft, rev = self.model(input)
                 _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
-          #      _loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
+          #      loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
 
                 if not is_step2 or not loss_upd:
                     _loss_t = self.criterion_t(ft, labels_)

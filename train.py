@@ -3,11 +3,14 @@ from torch.nn.modules.loss import BCELoss, CrossEntropyLoss, MSELoss, _Loss
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import ast
 import torch
+from torch.utils.data import DataLoader
+
 from data_set import as_one_dataloader, load_data
+from nn.ae_gan import AE_Generator
 from nn.loss import MultiViewLoss, ReversalLoss
 from nn.model import SimpleAutoEncoder, ATTFeedforward, ModelWithTemperature
 from data_set import train_valid_target_split
-from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer
+from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer, AEGeneratorTrainer
 from stats import get_unique_per_set_words
 
 
@@ -29,11 +32,35 @@ def run(args):
         # src_domain_data_set, tgt_domain_data_set = load_data('kitchen', 'books', verbose=True)
         # words_to_reconstruct = get_unique_per_set_words(src_domain_data_set, tgt_domain_data_set)
 
-        data_generator = as_one_dataloader(args.src_domain, args.tgt_domain, train_params, denoising_factor=args.denoising_factor)#,  words_to_reconstruct=words_to_reconstruct)
+        data_generator = as_one_dataloader(args.src_domain, args.tgt_domain, train_params, denoising_factor=args.denoising_factor, return_input=True)#,  words_to_reconstruct=words_to_reconstruct)
         trainer = AutoEncoderTrainer(ae_model, criterion, optimizer, scheduler, args.max_epochs, epochs_no_improve=args.epochs_no_improve)
         trainer.fit(data_generator)
         torch.save(ae_model.state_dict(), args.ae_model_file)
         print('Model was saved in {} file.'.format(args.ae_model_file))
+
+    elif args.model == 'AE_Generator':
+        ae_model = AE_Generator(5000, 250)
+        ae_model.summary()
+
+        optimizer = torch.optim.Adam(ae_model.parameters(), lr=args.learning_rate)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
+        # criterion = args.loss
+        reconstruction_criterion = MSELoss()
+
+        src_domain_data_set, tgt_domain_data_set = load_data('kitchen', 'books', verbose=True, return_input=True)
+        src_domain_data_set.denoising_factor = args.denoising_factor
+        tgt_domain_data_set.denoising_factor = args.denoising_factor
+
+        src_generator = DataLoader(src_domain_data_set, batch_size=8, shuffle=True)
+        tgt_generator = DataLoader(tgt_domain_data_set, batch_size=8, shuffle=True)
+
+        trainer = AEGeneratorTrainer(ae_model, reconstruction_criterion, optimizer, scheduler, args.max_epochs,
+                                     epochs_no_improve=args.epochs_no_improve)
+
+        trainer.fit(src_generator, tgt_generator)
+       # torch.save(ae_model.state_dict(), args.ae_model_file)
+       # print('Model was saved in {} file.'.format(args.ae_model_file))
+
     elif args.model == 'ATTFeedforward':
         src_domain_data_set, tgt_domain_data_set = load_data(args.src_domain, args.tgt_domain, verbose=True)
         train_generator, valid_generator, target_generator = train_valid_target_split(src_domain_data_set, tgt_domain_data_set, train_params)
@@ -99,11 +126,11 @@ if __name__ == '__main__':
     parser.add_argument('--tgt_domain', required=False, help='the target domain.', default='kitchen')
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='ATTFeedforward')
+    parser.add_argument('--model', required=False, default='AE_Generator')
     parser.add_argument('--max_epochs', required=False, type=int, default=300)
     parser.add_argument('--train_batch_size', required=False, type=int, default=8)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
-    parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-03)
+    parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-04)
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.5)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.5)
