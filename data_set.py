@@ -32,8 +32,8 @@ class AmazonDomainDataSet(dataset.Dataset):
             for i in range(len(_denoised)):
                 if random.random() < self.denoising_factor:
                     _denoised[i] = 0
+            # return index, _denoised, _doc2one_hot, item.src
             return index, _denoised, _doc2one_hot, item.src
-            #return index, _denoised, _doc2one_hot, item.sentiment
 
         if self.words_to_reconstruct is not None:
             _denoised = doc2one_hot(item.acl_processed, self.dict, self.words_to_reconstruct)
@@ -114,7 +114,7 @@ def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_
     data_set.return_input = return_input
     data_set.summary('Unsupervised data set')
 
-    return DataLoader(src_domain_data_set, **params_train)
+    return DataLoader(data_set, **params_train)
 
 
 def load_data(src_domain, tgt_domain, verbose=False, return_input=False):

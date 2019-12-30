@@ -11,7 +11,7 @@ import math
 import torch.nn.functional as F
 from data_set import AmazonDomainDataSet, train_valid_target_split
 from nn.loss import KLDivergenceLoss
-from nn.model import ModelWithTemperature, ATTFeedforward
+from nn.model import ModelWithTemperature, ATTFeedforward, SimpleAutoEncoder
 from utils.measure import acc
 from torch.utils.data import DataLoader
 
@@ -20,74 +20,105 @@ device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
 class AEGeneratorTrainer:
-    def __init__(self, model, reconstruction_criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
+    def __init__(self, model, reconstruction_criterion, discrimination_criterion, generator_criterion, g_optimizer, d_optimizer, ae_optimizer, scheduler, max_epochs, epochs_no_improve=3):
         self.model = model
         self.reconstruction_criterion = reconstruction_criterion
-        self.optimizer = optimizer
+        self.discrimination_criterion = discrimination_criterion
+        self.generator_criterion = generator_criterion
+        self.g_optimizer = g_optimizer
+        self.d_optimizer = d_optimizer
+        self.ae_optimizer = ae_optimizer
         self.max_epochs = max_epochs
         self.scheduler = scheduler
         self.epochs_no_improve = epochs_no_improve
 
     def fit(self, src_data_generator, tgt_data_generator):
-        self.model.train()
-
         i_epoch = 0
         n_batches = len(src_data_generator)
-        criterion = torch.nn.BCEWithLogitsLoss()
         for epoch in range(self.max_epochs):
-
+            self.model.train()
             i_batch = 0
             i_epoch += 1
-            reconstruction_losses = []
-            label_losses = []
-            acces = []
-            tgt_acces = []
+            generator_losses = [0]
+            reconstruction_losses = [0]
+            domain_losses = [0]
             tgt_iter = iter(tgt_data_generator)
 
-            for _, inputs, y_inputs, sentiment in src_data_generator:
+            d_steps = 1
+            g_steps = 1
+            r_steps = 1
+            for _, inputs, y_inputs, domain_tg in src_data_generator:
+                self.ae_optimizer.zero_grad()
+                self.d_optimizer.zero_grad()
+                self.g_optimizer.zero_grad()
+
                 i_batch += 1
-                _, tgt_inputs, tgt_labels, tgt_sentiment = next(tgt_iter)
+                _, tgt_inputs, tgt_labels, domain_tg_tgt = next(tgt_iter)
 
                 if type(y_inputs) == list:
                     y_inputs = torch.stack(y_inputs, dim=1)
-                if type(sentiment) == list:
-                    sentiment = torch.stack(sentiment, dim=1)
-                if type(tgt_sentiment) == list:
-                    tgt_sentiment = torch.stack(tgt_sentiment, dim=1)
-                inputs, tgt_inputs, y_inputs, sentiment, tgt_sentiment = inputs.to(device, torch.float), tgt_inputs.to(device, torch.float), y_inputs.to(device, torch.float), sentiment.to(device, torch.float), tgt_sentiment.to(device, torch.float)
+                if type(domain_tg) == list:
+                    domain_tg = torch.stack(domain_tg, dim=1)
+                if type(domain_tg_tgt) == list:
+                    domain_tg_tgt = torch.stack(domain_tg_tgt, dim=1)
+                inputs, tgt_inputs, tgt_labels, y_inputs, domain_tg, domain_tg_tgt = inputs.to(device, torch.float), tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float), y_inputs.to(device, torch.float), domain_tg.to(device, torch.float), domain_tg_tgt.to(device, torch.float)
 
-                # SRC feed forward pass
-                self.optimizer.zero_grad()
+                src_reconstructed_x, domain_class = self.model(inputs)
+                tgt_reconstructed_x, tgt_domain_class = self.model(tgt_inputs)
 
-                reconstructed_x, label_class = self.model(inputs)
-                src_reconstruction_loss = criterion(reconstructed_x, y_inputs)
+                # Reconstruction
+                src_loss = self.reconstruction_criterion(src_reconstructed_x, y_inputs)
+                tgt_loss = self.reconstruction_criterion(tgt_reconstructed_x, tgt_labels)
 
-                # TGT feed forward pass
-                # reconstructed_x, label_class = self.model(tgt_inputs)
-                # tgt_reconstruction_loss = criterion(torch.sigmoid(reconstructed_x), y_inputs)
-                #
-                # reconstruction_loss = src_reconstruction_loss + tgt_reconstruction_loss
+                loss = src_loss + tgt_loss
+                reconstruction_losses.append(loss.item())
+                loss.backward(retain_graph=True)
+                self.ae_optimizer.step()
 
-                reconstruction_losses.append(src_reconstruction_loss.item())
+                if epoch > r_steps:
+                    # The Discriminator learning
+                    for _ in range(d_steps):
+                        self.d_optimizer.zero_grad()
 
-                src_reconstruction_loss.backward()
-                self.optimizer.step()
+                        src_loss = self.discrimination_criterion(torch.squeeze(domain_class), domain_tg)
+                        tgt_loss = self.discrimination_criterion(torch.squeeze(tgt_domain_class), domain_tg_tgt)
 
-                # self.optimizer.zero_grad()
-                #
-                # reconstructed_x, label_class = self.model(inputs)
-                #
-                # label_class = torch.squeeze(label_class)
-                # sentiment = torch.max(sentiment, 1)[1].to(dtype=torch.float)
-                #
-                # label_loss = F.binary_cross_entropy_with_logits(label_class, sentiment)
-                # label_losses.append(label_loss.item())
-                #
-                # label_loss.backward(retain_graph=True)
-                # self.optimizer.step()
+                        loss = (src_loss + tgt_loss) / 2
+                        loss.backward()
 
-                sys.stdout.write('\r+\tepoch: %d / %d, batch: %d / %d, %s: %4.4f, %4.4f' % (i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses), mean([1])))
+                        self.d_optimizer.step()
 
+                        domain_losses.append(loss.item())
+
+                    # The Generator Learning
+                    for _ in range(g_steps):
+                        self.g_optimizer.zero_grad()
+
+                        _, tgt_inputs, tgt_labels, domain_tg_tgt = next(tgt_iter)
+
+                        if type(y_inputs) == list:
+                            y_inputs = torch.stack(y_inputs, dim=1)
+                        if type(domain_tg) == list:
+                            domain_tg = torch.stack(domain_tg, dim=1)
+                        if type(domain_tg_tgt) == list:
+                            domain_tg_tgt = torch.stack(domain_tg_tgt, dim=1)
+                        inputs, tgt_inputs, tgt_labels, y_inputs, domain_tg, domain_tg_tgt = inputs.to(device,
+                                                                                                       torch.float), tgt_inputs.to(
+                            device, torch.float), tgt_labels.to(device, torch.float), y_inputs.to(device,
+                                                                                                  torch.float), domain_tg.to(
+                            device, torch.float), domain_tg_tgt.to(device, torch.float)
+
+                        _, tgt_domain_class = self.model(tgt_inputs)
+
+                        g_tgt_loss = self.discrimination_criterion(torch.squeeze(tgt_domain_class), domain_tg) # Train G to pretend it's genuine
+                        g_tgt_loss.backward()
+                        self.g_optimizer.step()
+
+                        generator_losses.append(g_tgt_loss.item())
+
+                sys.stdout.write('\r+\tepoch: %d / %d, batch: %d / %d, %s: %4.4f, %4.4f, %4.4f' % (i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses), mean(domain_losses), mean(generator_losses)))
+
+            self.scheduler.step(mean(reconstruction_losses))
             print('')
 
             # acces = []
@@ -115,41 +146,56 @@ class AEGeneratorTrainer:
 
 class AutoEncoderTrainer:
     def __init__(self, model, criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
-        self.model = model
+        self.model: SimpleAutoEncoder = model
         self.criterion = criterion
         self.optimizer = optimizer
         self.max_epochs = max_epochs
         self.scheduler = scheduler
         self.epochs_no_improve = epochs_no_improve
 
-    def fit(self, train_data_generator):
+    def fit(self, train_data_generator, tgt_data_generator):
         print("> Training is running...")
         self.model.train()
 
-        kl_criterion = KLDivergenceLoss()
-
-        criterion = torch.nn.BCEWithLogitsLoss()
-        criterion_domain = torch.nn.BCEWithLogitsLoss()
+        # criterion = torch.nn.BCEWithLogitsLoss()
+        # criterion_domain = torch.nn.BCEWithLogitsLoss()
         for epoch in range(self.max_epochs):
             _loss = []
             _loss_domain = []
             _batch = 0
             prev_loss = 999
             prev_model = None
+            tgt_data_iter = iter(tgt_data_generator)
             batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
             print('+ \tepoch number: ' + str(epoch))
             for idx, inputs, labels, domain_gt in train_data_generator:
+                tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
                 _batch += 1
                 if type(labels) == list:
                     labels = torch.stack(labels, dim=1)
-                inputs, labels, domain_gt = inputs.to(device, torch.float), labels.to(device, torch.float), domain_gt.to(device, torch.float)
+                if type(tgt_labels) == list:
+                    tgt_labels = torch.stack(tgt_labels, dim=1)
+
+                inputs, labels = inputs.to(device, torch.float), labels.to(device, torch.float)
+                tgt_inputs, tgt_labels = tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float)
+
                 self.optimizer.zero_grad()
 
-                out = self.model(inputs)
+                out = F.sigmoid(self.model(inputs))
+                tgt_out = F.sigmoid(self.model(tgt_inputs))
 
-                loss = criterion(out, labels)
+                # self.model.froze()
+                # src_encoded = self.model(inputs)
+                # tgt_encoded = self.model(tgt_inputs)
+                # self.model.unfroze()
+
+                #loss = self.criterion(out, labels, src_encoded, tgt_encoded)
+                loss = self.criterion(out, labels)
+                tgt_loss = self.criterion(tgt_out, tgt_labels)
                 _loss.append(loss.item())
+                _loss.append(tgt_loss.item())
 
+                loss += tgt_loss
                 loss.backward()
                 self.optimizer.step()
 

@@ -42,7 +42,6 @@ class SimpleAutoEncoder(nn.Module):
             seq_list.append(nn.Linear(shape[_i], shape[_i+1]))
             if _i != len(shape)-2:
                 seq_list.append(nn.ReLU(True))
-          #  seq_list.append(nn.Dropout(p=0.3))
             self.encoder_modules.append(nn.Sequential(*seq_list))
 
         for _i in reversed(range(len(shape)-1)):
@@ -50,12 +49,9 @@ class SimpleAutoEncoder(nn.Module):
             seq_list.append(nn.Linear(shape[_i+1], shape[_i]))
             if _i != 0:
                 seq_list.append(nn.ReLU(True))
-                #seq_list.append(nn.Dropout(p=0.3))
-            #else:
-                #seq_list.append(nn.Sigmoid())
             self.decoder_modules.append(nn.Sequential(*seq_list))
 
-        #self.decoder_modules.append(nn.Sequential(nn.Linear(250, 5000)))
+        # self.decoder_modules.append(nn.Sequential(nn.Linear(250, 5000)))
 
         self.encoder = nn.Sequential(*self.encoder_modules)
         self.decoder = nn.Sequential(*self.decoder_modules)
@@ -64,24 +60,24 @@ class SimpleAutoEncoder(nn.Module):
 
     def forward(self, x):
     #    result = torch.empty(0).cuda()
+        x = self.encoder(x)
         if self.train_mode:
-            x = self.encoder(x)
           #  domain_out = self.domain_linear(grad_reverse(x, self.lambd))
             y = self.decoder(F.relu(x))
            # return F.sigmoid(y)#, domain_out
             return y
         else:
-            return self.encoder(x)
+            return x
 
     def set_train_mode(self, switch):
         self.train_mode = switch
 
     def froze(self):
-        torch.set_grad_enabled(False)
+        self.set_train_mode(False)
         self.eval()
 
     def unfroze(self):
-        torch.set_grad_enabled(True)
+        self.set_train_mode(True)
         self.train()
 
     def summary(self):
@@ -106,21 +102,21 @@ class ATTFeedforward(torch.nn.Module):
         # self.reversal_relu = torch.nn.ReLU()
         # self.reversal_out = torch.nn.Linear(self.hidden_size, 1)
 
-        self.f1_1 = torch.nn.Linear(50, self.hidden_size)
+        self.f1_1 = torch.nn.Linear(250, self.hidden_size)
         self.f1_1_relu = torch.nn.ReLU()
         self.f1_dropout = torch.nn.Dropout(p=0.3)
         self.f1_batchnorm = BatchNorm1d(50)
         self.f1_2 = torch.nn.Linear(self.hidden_size, 2) # tutaj moze popaczać
         self.f1_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f2_1 = torch.nn.Linear(50, self.hidden_size)
+        self.f2_1 = torch.nn.Linear(250, self.hidden_size)
         self.f2_1_relu = torch.nn.ReLU()
         self.f2_dropout = torch.nn.Dropout(p=0.3)
         self.f2_batchnorm = BatchNorm1d(50)
         self.f2_2 = torch.nn.Linear(self.hidden_size, 2)
         self.f2_2_softmax = torch.nn.Softmax(dim=0)
 
-        self.f3_1 = torch.nn.Linear(50, self.hidden_size)
+        self.f3_1 = torch.nn.Linear(250, self.hidden_size)
         self.f3_1_relu = torch.nn.ReLU()
         self.f3_dropout = torch.nn.Dropout(p=0.3)
         self.f3_batchnorm = BatchNorm1d(50)
@@ -144,7 +140,7 @@ class ATTFeedforward(torch.nn.Module):
         # output_rev = self.reversal_out(output_rev)
 
         output1 = self.f1_1(f_relu)
-        output1 = self.f1_batchnorm(output1)
+        #output1 = self.f1_batchnorm(output1)
         output1 = self.f1_1_relu(output1)
         output1 = self.f1_dropout(output1)
         output1 = self.f1_2(output1)
@@ -153,7 +149,7 @@ class ATTFeedforward(torch.nn.Module):
         #F1_softmax = self.f1_softmax(F1_relu)
 
         output2 = self.f2_1(f_relu)
-        output2 = self.f2_batchnorm(output2)
+      #  output2 = self.f2_batchnorm(output2)
         output2 = self.f2_1_relu(output2)
         output2 = self.f2_dropout(output2)
         output2 = self.f2_2(output2)

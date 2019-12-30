@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import numpy as np
+from torch.nn import MSELoss, KLDivLoss
 
 
 class MultiViewLoss(nn.Module):
@@ -31,6 +32,26 @@ class KLDivergenceLoss(nn.Module):
         return KL(p, q)
 
 
+class MSEWithDivergenceLoss(nn.Module):
+    def __init__(self):
+        super(MSEWithDivergenceLoss, self).__init__()
+        self.alpha = 1
+        self.beta = 1
+        self.reconstruction_cr = MSELoss()
+        self.divergence_cr = KLDivLoss()
+
+    def forward(self, p, q, hidden_p, hidden_q):
+        r = self.reconstruction_cr(p, q)
+        m = torch.softmax(torch.mean(hidden_p, dim=0), 0)
+
+        P_prob = torch.softmax(torch.mean(hidden_p, dim=0), 0)
+        Q_prob = torch.softmax(torch.mean(hidden_q, dim=0), 0)
+
+        d = (KL(P_prob, Q_prob) + KL(Q_prob, P_prob)) / 2
+        # print(' ' + str(d.item()), str(r.item()))
+        return r + 0.1 * d
+
+
 class ReversalLoss(nn.Module):
     def __init__(self):
         super(ReversalLoss, self).__init__()
@@ -53,5 +74,5 @@ def KL(P, Q):
     P = P + epsilon
     Q = Q + epsilon
 
-    divergence = np.sum(P * np.log(P / Q))
-    return divergence
+    d = (P * (P / Q).log()).sum()
+    return d
