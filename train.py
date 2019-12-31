@@ -27,8 +27,8 @@ def run(args):
         optimizer = torch.optim.Adam(ae_model.parameters(), lr=args.learning_rate)
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
         #criterion = args.loss
-        #criterion = MSEWithDivergenceLoss()
-        criterion = MSELoss()
+        criterion = MSEWithDivergenceLoss()
+        #criterion = MSELoss()
 
         # src_domain_data_set, tgt_domain_data_set = load_data('kitchen', 'books', verbose=True)
         # words_to_reconstruct = get_unique_per_set_words(src_domain_data_set, tgt_domain_data_set)
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument('--tgt_domain', required=False, help='the target domain.', default='kitchen')
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='AutoEncoder')
+    parser.add_argument('--model', required=False, default='ATTFeedforward')
     parser.add_argument('--max_epochs', required=False, type=int, default=500)
     parser.add_argument('--train_batch_size', required=False, type=int, default=8)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
@@ -157,7 +157,7 @@ if __name__ == '__main__':
     parser.add_argument('--autoencoder_shape', required=False, default='(5000, 500, 250)')
     parser.add_argument('--attff_input_size', required=False, type=int, default=5000)
     parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
-    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500_250_mse.pt')
+    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500_250_mse_500iter.pt')
     parser.add_argument('--attnn_model_file', required=False, default='tmp/attnn_model_{}_{}.pt')
 
     args = parser.parse_args()

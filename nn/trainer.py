@@ -156,6 +156,7 @@ class AutoEncoderTrainer:
     def fit(self, train_data_generator, tgt_data_generator):
         print("> Training is running...")
         self.model.train()
+        self.model.set_train_mode(True)
 
         # criterion = torch.nn.BCEWithLogitsLoss()
         # criterion_domain = torch.nn.BCEWithLogitsLoss()
@@ -181,21 +182,22 @@ class AutoEncoderTrainer:
 
                 self.optimizer.zero_grad()
 
-                out = F.sigmoid(self.model(inputs))
-                tgt_out = F.sigmoid(self.model(tgt_inputs))
+                # out = F.sigmoid(self.model(inputs))
+                # tgt_out = F.sigmoid(self.model(tgt_inputs))
 
-                # self.model.froze()
-                # src_encoded = self.model(inputs)
-                # tgt_encoded = self.model(tgt_inputs)
-                # self.model.unfroze()
+                out, src_encoded = self.model(inputs)
+                tgt_out, tgt_encoded = self.model(tgt_inputs)
+                out = F.sigmoid(out)
+                tgt_out = F.sigmoid(tgt_out)
+                #self.model.unfroze()
 
-                #loss = self.criterion(out, labels, src_encoded, tgt_encoded)
-                loss = self.criterion(out, labels)
-                tgt_loss = self.criterion(tgt_out, tgt_labels)
+                loss = self.criterion(out, labels, tgt_out, tgt_labels, src_encoded, tgt_encoded)
+                #loss = self.criterion(out, labels)
+               # tgt_loss = self.criterion(tgt_out, tgt_labels)
                 _loss.append(loss.item())
-                _loss.append(tgt_loss.item())
+                #_loss.append(tgt_loss.item())
 
-                loss += tgt_loss
+              #  loss += tgt_loss
                 loss.backward()
                 self.optimizer.step()
 
@@ -434,7 +436,7 @@ class DomainAdaptationTrainer:
             #         valid_data.append(item)
 
             for _i in most_confident_idxs:
-                if f1_idx[_i] == f2_idx[_i] and f2_idx[_i] == fn_idx[_i]:  # and f1_max[_i] > 0.90 and f2_max[_i] > 0.90:
+                if f1_idx[_i] == f2_idx[_i] and f1_max[_i] > 0.90 and f2_max[_i] > 0.90:
                     n_all_qualified += 1
                     idx_added.append(_i)
                     item = copy.deepcopy(target_generator.dataset.get(_i))
@@ -442,7 +444,6 @@ class DomainAdaptationTrainer:
                         n_wrong_labeled += 1
                     item.sentiment = (1, 0) if f1_idx[_i] == 0 else (0, 1)
                     training_tgt_data_set.append(item)
-
                 else:
                     pass
 
@@ -460,7 +461,7 @@ class DomainAdaptationTrainer:
             #                                                                             target_data_set,
             #                                                                           train_params)
 
-            # self.model.reset()
+            self.model.reset()
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.0001)
             self.scheduler = ReduceLROnPlateau(self.optimizer, factor=0.2, patience=2)
 

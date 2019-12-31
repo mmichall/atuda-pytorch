@@ -65,7 +65,7 @@ class SimpleAutoEncoder(nn.Module):
           #  domain_out = self.domain_linear(grad_reverse(x, self.lambd))
             y = self.decoder(F.relu(x))
            # return F.sigmoid(y)#, domain_out
-            return y
+            return y, x
         else:
             return x
 
@@ -74,11 +74,11 @@ class SimpleAutoEncoder(nn.Module):
 
     def froze(self):
         self.set_train_mode(False)
-        self.eval()
+    #    self.eval()
 
     def unfroze(self):
         self.set_train_mode(True)
-        self.train()
+     #   self.train()
 
     def summary(self):
         print('> Model summary: \n{}'.format(self))

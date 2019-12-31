@@ -40,16 +40,16 @@ class MSEWithDivergenceLoss(nn.Module):
         self.reconstruction_cr = MSELoss()
         self.divergence_cr = KLDivLoss()
 
-    def forward(self, p, q, hidden_p, hidden_q):
+    def forward(self, p, q, tgt_p, tgt_q, hidden_p, hidden_q):
         r = self.reconstruction_cr(p, q)
-        m = torch.softmax(torch.mean(hidden_p, dim=0), 0)
+        r_tgt = self.reconstruction_cr(tgt_p, tgt_q)
 
         P_prob = torch.softmax(torch.mean(hidden_p, dim=0), 0)
         Q_prob = torch.softmax(torch.mean(hidden_q, dim=0), 0)
 
         d = (KL(P_prob, Q_prob) + KL(Q_prob, P_prob)) / 2
         # print(' ' + str(d.item()), str(r.item()))
-        return r + 0.1 * d
+        return (r + r_tgt) / 2 + 0.1 * d
 
 
 class ReversalLoss(nn.Module):
