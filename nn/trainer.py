@@ -253,8 +253,8 @@ class DomainAdaptationTrainer:
             target_generator=None, max_epochs=10, is_step2=False, _dict=None, calibrate=False):
         n_epochs_stop = 0
         prev_metric = 0
-        prev_model = None
 
+        target_generator = DataLoader(target_generator.dataset, shuffle=True, batch_size=target_generator.batch_size)
         for epoch in range(max_epochs):
             self.model.train()
             print('+ \tepoch number: ' + str(epoch))
@@ -273,23 +273,49 @@ class DomainAdaptationTrainer:
 
             random.shuffle(batches)
 
+            # print(len(training_loader))
+            # print(len(target_generator))
+            # Domain divergence
+            #src_iter = iter(training_loader)
+            tgt_iter = iter(target_generator)
+
             for idx, input, labels, src, loss_upd in batches:
                 n_batch += 1
 
+                try:
+                    idx_tgt, input_tgt, labels_tgt, src_tgt = next(tgt_iter)
+                except:
+                    tgt_iter = iter(target_generator)
+                    idx_tgt, input_tgt, labels_tgt, src_tgt = next(tgt_iter)
+
                 if type(labels) == list:
                     labels = torch.stack(labels, dim=1)
+                if type(labels_tgt) == list:
+                    labels_tgt = torch.stack(labels_tgt, dim=1)
+
 
                 # CrossEntropyLoss does not expect a one-hot encoded vector as the target, but class indices
                 # max(1) will return the maximal value (and index in PyTorch) in this particular dimension.
                 input, labels_, src = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long), src.to(device, torch.float)
+                input_tgt, labels_tgt, src_tgt = input_tgt.to(device, torch.float), torch.max(labels_tgt, 1)[1].to(device, torch.long), src_tgt.to(device, torch.float)
                 # if self.ae_model is not None:
                 #     input = self.ae_model(input)
                     #input = torch.cat([input, ae_output], 1)
 
                 self.optimizer.zero_grad()
 
-                f1, f2, ft, rev = self.model(input)
-                _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_)
+                # AutoEncoder domain discrepancy
+                # _, src_batch_data, _, _ = next(src_iter)
+
+                self.ae_model.zero_grad()
+
+                enc_src_out = self.ae_model(input)
+                enc_tgt_out = self.ae_model(input_tgt)
+                #################################
+
+                f1, f2, ft, _ = self.model(input)
+                _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, enc_src_out, enc_tgt_out, labels_)
+
           #      loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
 
                 if not is_step2 or not loss_upd:
@@ -383,8 +409,7 @@ class DomainAdaptationTrainer:
     def pseudo_label(self, training_generator: DataLoader, valid_generator: DataLoader, target_data_set, train_params,
                      iterations=20, max_epochs=3):
         # print(target_data_set.data)
-        target_generator = DataLoader(target_data_set, batch_size=len(target_data_set))
-
+        target_generator = DataLoader(target_data_set, **train_params)
 
         # src_generator = DataLoader(src_data_set, **train_params)
         idx_added = []
@@ -479,10 +504,11 @@ class DomainAdaptationTrainer:
 
 
     def _predict(self, data_generator: DataLoader):
-        assert data_generator.batch_size == len(data_generator.dataset)
+        # assert data_generator.batch_size == len(data_generator.dataset)
+        data_loader = DataLoader(data_generator.dataset, batch_size=len(data_generator.dataset))
         self.model.eval()
         with torch.set_grad_enabled(False):
-            for idx, input, labels, src in data_generator:
+            for idx, input, labels, src in data_loader:
                 input = input.to(device, torch.float)
                 # if self.ae_model:
                 #     input = self.ae_model(input)

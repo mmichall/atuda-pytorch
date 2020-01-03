@@ -98,7 +98,7 @@ def train_valid_target_split(src_domain_data_set, tgt_domain_data_set, params_tr
     # Generators
     training_generator = DataLoader(train_subset, **params_train)
     validation_generator = DataLoader(valid_subset, **params_train)
-    target_generator = DataLoader(tgt_domain_data_set, **params_target)
+    target_generator = DataLoader(tgt_domain_data_set, **params_train)
 
     return training_generator, validation_generator, target_generator
 
@@ -107,7 +107,7 @@ def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_
                       words_to_reconstruct=None, return_input=False) -> DataLoader:
     src_domain_data_set, tgt_domain_data_set = load_data(src_domain, tgt_domain, return_input=return_input)
 
-    data_set = merge([src_domain_data_set, tgt_domain_data_set])
+    data_set = merge([src_domain_data_set, src_domain_data_set, tgt_domain_data_set])
     data_set.dict = src_domain_data_set.dict
     data_set.denoising_factor = denoising_factor
     data_set.words_to_reconstruct = words_to_reconstruct

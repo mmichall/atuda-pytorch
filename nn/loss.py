@@ -10,7 +10,7 @@ class MultiViewLoss(nn.Module):
     def __init__(self):
         super(MultiViewLoss, self).__init__()
 
-    def forward(self, f1_out, f2_out, w1, w2, y):
+    def forward(self, f1_out, f2_out, w1, w2, enc_src_out, enc_tgt_out, y):
         f1_ce = F.cross_entropy(f1_out, y, reduction='none')
         f2_ce = F.cross_entropy(f2_out, y, reduction='none')
         diff = torch.abs(torch.sum(torch.abs(w1)) - torch.sum(torch.abs(w2)))
@@ -18,9 +18,16 @@ class MultiViewLoss(nn.Module):
         w2 = w2.reshape(-1)
         w1 = w1.view(len(w1), 1).t()
         w2 = w2.view(len(w2), 1)
+
+        P_prob = torch.softmax(torch.mean(enc_src_out, dim=0), 0)
+        Q_prob = torch.softmax(torch.mean(enc_tgt_out, dim=0), 0)
+
+        d = (KL(P_prob, Q_prob) + KL(Q_prob, P_prob)) / 2
+
         # regularizer = torch.mm(w1, w2)
         # print(regularizer.item())
-        return torch.mean(f1_ce + f2_ce) + torch.abs(torch.mm(w1, w2)) + 0.001 * diff
+        # print(d.item())
+        return torch.mean(f1_ce + f2_ce) + torch.abs(torch.mm(w1, w2)) + 0.001 * diff + 0.1 * d
 
 
 class KLDivergenceLoss(nn.Module):
