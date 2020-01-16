@@ -145,10 +145,11 @@ class AEGeneratorTrainer:
 
 
 class AutoEncoderTrainer:
-    def __init__(self, model, criterion, optimizer, scheduler, max_epochs, epochs_no_improve=3):
+    def __init__(self, model, criterion, optimizer, optimizer_kl, scheduler, max_epochs, epochs_no_improve=3):
         self.model: SimpleAutoEncoder = model
         self.criterion = criterion
         self.optimizer = optimizer
+        self.optimizer_kl = optimizer_kl
         self.max_epochs = max_epochs
         self.scheduler = scheduler
         self.epochs_no_improve = epochs_no_improve
@@ -160,7 +161,9 @@ class AutoEncoderTrainer:
 
         # criterion = torch.nn.BCEWithLogitsLoss()
         # criterion_domain = torch.nn.BCEWithLogitsLoss()
+
         for epoch in range(self.max_epochs):
+            self.model.set_train_mode(True)
             _loss = []
             _loss_domain = []
             _batch = 0
@@ -169,6 +172,9 @@ class AutoEncoderTrainer:
             tgt_data_iter = iter(tgt_data_generator)
             batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
             print('+ \tepoch number: ' + str(epoch))
+            counter = 0
+            src_batches = []
+            tgt_batches = []
             for idx, inputs, labels, domain_gt in train_data_generator:
                 tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
                 _batch += 1
@@ -218,6 +224,31 @@ class AutoEncoderTrainer:
                 sys.stdout.write(
                     '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__,
                                                          _loss_mean))
+
+                counter += 1
+
+                src_batches.append(inputs)
+                tgt_batches.append(tgt_inputs)
+
+            src_batches = torch.cat(src_batches, dim=0)
+            tgt_batches = torch.cat(tgt_batches, dim=0)
+
+            self.model.set_train_mode(False)
+
+            with torch.no_grad():
+                src_encoded = self.model(src_batches)
+
+            for _ in range(20):
+                tgt_encoded = self.model(tgt_batches)
+
+                loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+                loss.backward()
+
+                print(loss.item())
+                self.optimizer_kl.step()
+
+
+
             if prev_loss <= _loss_mean:
                 n_epochs_stop += 1
             else:
@@ -285,7 +316,7 @@ class DomainAdaptationTrainer:
                 try:
                     idx_tgt, input_tgt, labels_tgt, src_tgt = next(tgt_iter)
                 except:
-                    tgt_iter = iter(target_generator)
+                   # tgt_iter = iter(target_generator)
                     idx_tgt, input_tgt, labels_tgt, src_tgt = next(tgt_iter)
 
                 if type(labels) == list:
@@ -409,7 +440,7 @@ class DomainAdaptationTrainer:
     def pseudo_label(self, training_generator: DataLoader, valid_generator: DataLoader, target_data_set, train_params,
                      iterations=20, max_epochs=3):
         # print(target_data_set.data)
-        target_generator = DataLoader(target_data_set, **train_params)
+        target_generator = DataLoader(target_data_set, batch_size=len(target_data_set))
 
         # src_generator = DataLoader(src_data_set, **train_params)
         idx_added = []
@@ -504,11 +535,10 @@ class DomainAdaptationTrainer:
 
 
     def _predict(self, data_generator: DataLoader):
-        # assert data_generator.batch_size == len(data_generator.dataset)
-        data_loader = DataLoader(data_generator.dataset, batch_size=len(data_generator.dataset))
+        assert data_generator.batch_size == len(data_generator.dataset)
         self.model.eval()
         with torch.set_grad_enabled(False):
-            for idx, input, labels, src in data_loader:
+            for idx, input, labels, src in data_generator:
                 input = input.to(device, torch.float)
                 # if self.ae_model:
                 #     input = self.ae_model(input)
