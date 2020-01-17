@@ -162,29 +162,39 @@ class AutoEncoderTrainer:
         # criterion = torch.nn.BCEWithLogitsLoss()
         # criterion_domain = torch.nn.BCEWithLogitsLoss()
 
+        batches_src = [None] * len(train_data_generator)
+        batches_tgt = [None] * len(tgt_data_generator)
+
+        prev_loss = 999
+        prev_model = None
+
         for epoch in range(self.max_epochs):
+            for i, d in enumerate(train_data_generator):
+                batches_src[i] = d
+
+            for i, d in enumerate(tgt_data_generator):
+                batches_tgt[i] = d
+
             self.model.set_train_mode(True)
             _loss = []
             _loss_domain = []
             _batch = 0
-            prev_loss = 999
-            prev_model = None
             tgt_data_iter = iter(tgt_data_generator)
             batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
             print('+ \tepoch number: ' + str(epoch))
             counter = 0
             src_batches = []
             tgt_batches = []
-            for idx, inputs, labels, domain_gt in train_data_generator:
-                tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
+            for idx, inputs, labels, domain_gt in random.sample(batches_src + batches_tgt, len(batches_src + batches_tgt)):
+                #tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
                 _batch += 1
-                if type(labels) == list:
-                    labels = torch.stack(labels, dim=1)
-                if type(tgt_labels) == list:
-                    tgt_labels = torch.stack(tgt_labels, dim=1)
+                # if type(labels) == list:
+                #     labels = torch.stack(labels, dim=1)
+                # if type(tgt_labels) == list:
+                #     tgt_labels = torch.stack(tgt_labels, dim=1)
 
                 inputs, labels = inputs.to(device, torch.float), labels.to(device, torch.float)
-                tgt_inputs, tgt_labels = tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float)
+                # tgt_inputs, tgt_labels = tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float)
 
                 self.optimizer.zero_grad()
 
@@ -192,18 +202,18 @@ class AutoEncoderTrainer:
                 # tgt_out = F.sigmoid(self.model(tgt_inputs))
 
                 out, src_encoded = self.model(inputs)
-                tgt_out, tgt_encoded = self.model(tgt_inputs)
-                out = F.sigmoid(out)
-                tgt_out = F.sigmoid(tgt_out)
+                # tgt_out, tgt_encoded = self.model(tgt_inputs)
+                # out = F.sigmoid(out)
+                # tgt_out = F.sigmoid(tgt_out)
                 #self.model.unfroze()
 
-                loss = self.criterion(out, labels, tgt_out, tgt_labels, src_encoded, tgt_encoded)
-                #loss = self.criterion(out, labels)
-               # tgt_loss = self.criterion(tgt_out, tgt_labels)
+                loss = self.criterion(out, labels)
+                # loss = self.criterion(out, labels)
+                # tgt_loss = self.criterion(tgt_out, tgt_labels)
                 _loss.append(loss.item())
                 #_loss.append(tgt_loss.item())
 
-              #  loss += tgt_loss
+                # loss += tgt_loss
                 loss.backward()
                 self.optimizer.step()
 
@@ -222,32 +232,31 @@ class AutoEncoderTrainer:
                 _loss_mean = round(mean(_loss), 5)
                 # _loss_mean_domain = round(mean(_loss_domain), 5)
                 sys.stdout.write(
-                    '\r+\tbatch: {} / {}, {}: {}'.format(_batch, batches_n, self.criterion.__class__.__name__,
+                    '\r+\tbatch: {}, {}: {}'.format(_batch, self.criterion.__class__.__name__,
                                                          _loss_mean))
 
                 counter += 1
 
-                src_batches.append(inputs)
-                tgt_batches.append(tgt_inputs)
+                #src_batches.append(inputs)
+               # tgt_batches.append(tgt_inputs)
 
-            src_batches = torch.cat(src_batches, dim=0)
-            tgt_batches = torch.cat(tgt_batches, dim=0)
+            # src_batches = torch.cat(src_batches, dim=0)
+            # tgt_batches = torch.cat(tgt_batches, dim=0)
 
             self.model.set_train_mode(False)
 
-            with torch.no_grad():
-                src_encoded = self.model(src_batches)
+            # with torch.no_grad():
+            #     src_encoded = self.model(src_batches)
 
-            for _ in range(20):
-                tgt_encoded = self.model(tgt_batches)
-
-                loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
-                loss.backward()
-
-                print(loss.item())
-                self.optimizer_kl.step()
-
-
+            # print('\n')
+            # for _ in range(20):
+            #     tgt_encoded = self.model(tgt_batches)
+            #
+            #     loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+            #     loss.backward()
+            #
+            #     print(loss.item())
+            #     self.optimizer_kl.step()
 
             if prev_loss <= _loss_mean:
                 n_epochs_stop += 1
@@ -257,12 +266,15 @@ class AutoEncoderTrainer:
                 prev_loss = _loss_mean
 
             if n_epochs_stop == self.epochs_no_improve:
-                # self.model = prev_model
+                self.model = prev_model
                 print('Early Stopping!')
                 break
 
             print('')
             self.scheduler.step(mean(_loss))
+
+            batches_src = [None] * len(train_data_generator)
+            batches_tgt = [None] * len(tgt_data_generator)
         print("> Training is over. Thank you for your patience :).")
 
 

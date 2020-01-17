@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from data_set import as_one_dataloader, load_data
 from nn.ae_gan import AE_Generator
-from nn.loss import MultiViewLoss, ReversalLoss, MSEWithDivergenceLoss
+from nn.loss import MultiViewLoss, BCEWithDivergenceLoss
 from nn.model import SimpleAutoEncoder, ATTFeedforward, ModelWithTemperature
 from data_set import train_valid_target_split
 from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer, AEGeneratorTrainer
@@ -28,7 +28,7 @@ def run(args):
         optimizer_kl = torch.optim.Adam(ae_model.encoder.parameters(), lr=args.learning_rate)
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=args.reduce_lr_factor, patience=args.reduce_lr_patience)
         #criterion = args.loss
-        criterion = MSEWithDivergenceLoss()
+        criterion = BCEWithLogitsLoss()
         #criterion = MSELoss()
 
         # src_domain_data_set, tgt_domain_data_set = load_data('kitchen', 'books', verbose=True)
@@ -140,17 +140,17 @@ if __name__ == '__main__':
     parser.add_argument('--tgt_domain', required=False, help='the target domain.', default='kitchen')
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='ATTFeedforward')
+    parser.add_argument('--model', required=False, default='AutoEncoder')
     parser.add_argument('--max_epochs', required=False, type=int, default=300)
     parser.add_argument('--train_batch_size', required=False, type=int, default=8)
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
-    parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-02)
+    parser.add_argument('--learning_rate', required=False, type=float, default=1.0e-03) # for autoencoder learning: 1.0e-03
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.5)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.5)
-    parser.add_argument('--epochs_no_improve', required=False, type=float, default=3)
+    parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
-    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_500_250_mse_kl_2steps_2.pt')
+    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_500_250_bce.pt')
     parser.add_argument('--load_attnn_model', required=False, type=bool, default=False)
     parser.add_argument('--pseudo_label_iterations', required=False, type=int, default=10)
 
@@ -158,7 +158,7 @@ if __name__ == '__main__':
     parser.add_argument('--autoencoder_shape', required=False, default='(5000, 500, 250)')
     parser.add_argument('--attff_input_size', required=False, type=int, default=5000)
     parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
-    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500_250_mse_kl_2steps_2.pt')
+    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500_250_bce.pt')
     parser.add_argument('--attnn_model_file', required=False, default='tmp/attnn_model_{}_{}.pt')
 
     args = parser.parse_args()
