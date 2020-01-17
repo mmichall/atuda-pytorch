@@ -183,8 +183,6 @@ class AutoEncoderTrainer:
             batches_n = math.ceil(len(train_data_generator.dataset) / train_data_generator.batch_size)
             print('+ \tepoch number: ' + str(epoch))
             counter = 0
-            src_batches = []
-            tgt_batches = []
             for idx, inputs, labels, domain_gt in random.sample(batches_src + batches_tgt, len(batches_src + batches_tgt)):
                 #tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
                 _batch += 1
@@ -236,27 +234,29 @@ class AutoEncoderTrainer:
                                                          _loss_mean))
 
                 counter += 1
-
-                #src_batches.append(inputs)
-               # tgt_batches.append(tgt_inputs)
+                #
+                # src_batches.append(inputs)
+                # tgt_batches.append(tgt_inputs)
 
             # src_batches = torch.cat(src_batches, dim=0)
             # tgt_batches = torch.cat(tgt_batches, dim=0)
 
             self.model.set_train_mode(False)
 
-            # with torch.no_grad():
-            #     src_encoded = self.model(src_batches)
+            batches_src = torch.stack(batches_src)
+            batches_tgt = torch.stack(batches_tgt)
+            with torch.no_grad():
+                src_encoded = self.model(batches_src)
 
-            # print('\n')
-            # for _ in range(20):
-            #     tgt_encoded = self.model(tgt_batches)
-            #
-            #     loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
-            #     loss.backward()
-            #
-            #     print(loss.item())
-            #     self.optimizer_kl.step()
+            print('\n')
+            for _ in range(20):
+                tgt_encoded = self.model(batches_tgt)
+
+                loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+                loss.backward()
+
+                print(loss.item())
+                self.optimizer_kl.step()
 
             if prev_loss <= _loss_mean:
                 n_epochs_stop += 1

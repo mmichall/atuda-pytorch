@@ -150,7 +150,7 @@ if __name__ == '__main__':
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.5)
     parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
-    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_500_250_bce.pt')
+    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_5000_500_250_bce_kl_20.pt')
     parser.add_argument('--load_attnn_model', required=False, type=bool, default=False)
     parser.add_argument('--pseudo_label_iterations', required=False, type=int, default=10)
 
@@ -158,7 +158,7 @@ if __name__ == '__main__':
     parser.add_argument('--autoencoder_shape', required=False, default='(5000, 500, 250)')
     parser.add_argument('--attff_input_size', required=False, type=int, default=5000)
     parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
-    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500_250_bce.pt')
+    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_5000_500_250_bce_kl_20.pt')
     parser.add_argument('--attnn_model_file', required=False, default='tmp/attnn_model_{}_{}.pt')
 
     args = parser.parse_args()
