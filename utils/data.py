@@ -27,12 +27,15 @@ def word2one_hot(word: str, dictionary: Dict, vec_length: int):
 def doc2one_hot(doc: List[str], dictionary: Dict, words_to_reconstruct=None):
     vec_length = len(dictionary)
     vector = np.zeros(len(dictionary))
+    indxes = set()
     for word in doc:
         if words_to_reconstruct is not None and word[0] in words_to_reconstruct:
             continue
         if word[0] not in dictionary:
             continue
-        vector = np.add(vector, word2one_hot(word[0], dictionary, vec_length))
+        indxes.add(dictionary[word[0]][0])
+        #vector = np.add(vector, word2one_hot(word[0], dictionary, vec_length))
+    vector[list(indxes)] = 1
     return vector
 
 

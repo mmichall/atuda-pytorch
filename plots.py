@@ -16,7 +16,7 @@ use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
 
 ae_model = SimpleAutoEncoder(ast.literal_eval('(5000, 500, 250)'))
-ae_model.load_state_dict(torch.load('tmp/auto_encoder_5000_500_250_bce.pt'))
+ae_model.load_state_dict(torch.load('tmp/auto_encoder_5000_500_250_bce_kl_20.pt'))
 ae_model.set_train_mode(False)
 ae_model.to(device)
 

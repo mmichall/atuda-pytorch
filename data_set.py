@@ -2,6 +2,7 @@ import copy
 import random
 from typing import List
 import pandas as pd
+import numpy as np
 from torch.utils.data import dataset, DataLoader
 from utils.data import doc2one_hot, build_dictionary, train_valid_split
 from utils.reader import AmazonDomainDataReader
@@ -29,10 +30,8 @@ class AmazonDomainDataSet(dataset.Dataset):
         # TODO: Such a dirty code! Has to be refactored immediately!
         if self.return_input:
             _denoised = copy.deepcopy(_doc2one_hot)
-            for i in range(len(_denoised)):
-                if random.random() < self.denoising_factor:
-                    _denoised[i] = 0
-            # return index, _denoised, _doc2one_hot, item.src
+            mask = np.random.choice([0, 1], size=(len(_denoised),), p=[self.denoising_factor, 1 - self.denoising_factor])
+            _denoised = mask * _denoised
             return index, _denoised, _doc2one_hot, item.src
 
         if self.words_to_reconstruct is not None:
