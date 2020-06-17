@@ -20,7 +20,8 @@ device = torch.device("cuda:0" if use_cuda else "cpu")
 
 
 class AEGeneratorTrainer:
-    def __init__(self, model, reconstruction_criterion, discrimination_criterion, generator_criterion, g_optimizer, d_optimizer, ae_optimizer, scheduler, max_epochs, epochs_no_improve=3):
+    def __init__(self, model, reconstruction_criterion, discrimination_criterion, generator_criterion, g_optimizer,
+                 d_optimizer, ae_optimizer, scheduler, max_epochs, epochs_no_improve=3):
         self.model = model
         self.reconstruction_criterion = reconstruction_criterion
         self.discrimination_criterion = discrimination_criterion
@@ -61,7 +62,11 @@ class AEGeneratorTrainer:
                     domain_tg = torch.stack(domain_tg, dim=1)
                 if type(domain_tg_tgt) == list:
                     domain_tg_tgt = torch.stack(domain_tg_tgt, dim=1)
-                inputs, tgt_inputs, tgt_labels, y_inputs, domain_tg, domain_tg_tgt = inputs.to(device, torch.float), tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float), y_inputs.to(device, torch.float), domain_tg.to(device, torch.float), domain_tg_tgt.to(device, torch.float)
+                inputs, tgt_inputs, tgt_labels, y_inputs, domain_tg, domain_tg_tgt = inputs.to(device,
+                                                                                               torch.float), tgt_inputs.to(
+                    device, torch.float), tgt_labels.to(device, torch.float), y_inputs.to(device,
+                                                                                          torch.float), domain_tg.to(
+                    device, torch.float), domain_tg_tgt.to(device, torch.float)
 
                 src_reconstructed_x, domain_class = self.model(inputs)
                 tgt_reconstructed_x, tgt_domain_class = self.model(tgt_inputs)
@@ -110,13 +115,16 @@ class AEGeneratorTrainer:
 
                         _, tgt_domain_class = self.model(tgt_inputs)
 
-                        g_tgt_loss = self.discrimination_criterion(torch.squeeze(tgt_domain_class), domain_tg) # Train G to pretend it's genuine
+                        g_tgt_loss = self.discrimination_criterion(torch.squeeze(tgt_domain_class),
+                                                                   domain_tg)  # Train G to pretend it's genuine
                         g_tgt_loss.backward()
                         self.g_optimizer.step()
 
                         generator_losses.append(g_tgt_loss.item())
 
-                sys.stdout.write('\r+\tepoch: %d / %d, batch: %d / %d, %s: %4.4f, %4.4f, %4.4f' % (i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses), mean(domain_losses), mean(generator_losses)))
+                sys.stdout.write('\r+\tepoch: %d / %d, batch: %d / %d, %s: %4.4f, %4.4f, %4.4f' % (
+                i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses), mean(domain_losses),
+                mean(generator_losses)))
 
             self.scheduler.step(mean(reconstruction_losses))
             print('')
@@ -145,7 +153,8 @@ class AEGeneratorTrainer:
 
 
 class AutoEncoderTrainer:
-    def __init__(self, model, criterion, optimizer, optimizer_kl, scheduler, max_epochs, epochs_no_improve=3):
+    def __init__(self, model, criterion, optimizer, optimizer_kl, scheduler, max_epochs, epochs_no_improve=3,
+                 model_file=''):
         self.model: SimpleAutoEncoder = model
         self.criterion = criterion
         self.optimizer = optimizer
@@ -153,6 +162,7 @@ class AutoEncoderTrainer:
         self.max_epochs = max_epochs
         self.scheduler = scheduler
         self.epochs_no_improve = epochs_no_improve
+        self.model_file = model_file
 
     def fit(self, train_data, tgt_data, shuffle=True, denoising_factor=0.0, batch_size=8, return_input=True):
         print("> Training is running...")
@@ -160,7 +170,11 @@ class AutoEncoderTrainer:
         self.model.set_train_mode(True)
 
         data_set = merge([train_data, tgt_data])
-        data_set.dict = train_data.dict
+        print(len(train_data))
+        print(len(tgt_data))
+        print(len(data_set))
+        data_set.dict.update(train_data.dict)
+        data_set.dict.update(tgt_data.dict)
         data_set.denoising_factor = denoising_factor
         data_set.return_input = return_input
         data_set.summary('Training data set')
@@ -170,109 +184,122 @@ class AutoEncoderTrainer:
         prev_loss = 999
         prev_model = None
 
-        for epoch in range(self.max_epochs):
-            self.model.set_train_mode(True)
-            _loss = []
-            _loss_domain = []
-            _batch = 0
-            print('+ \tepoch number: ' + str(epoch))
-            counter = 0
-            for idx, inputs, labels, domain_gt in data_generator:
-                #tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
-                _batch += 1
-                # if type(labels) == list:
-                #     labels = torch.stack(labels, dim=1)
-                # if type(tgt_labels) == list:
-                #     tgt_labels = torch.stack(tgt_labels, dim=1)
+        with open('/proot/tmp/autoencoder_metrics.txt', 'a+') as f:
+            _kl_losses = []
+            _losses = []
+            for epoch in range(self.max_epochs):
+                self.model.train()
+                self.model.set_train_mode(True)
+                _loss = []
+                _loss_domain = []
+                _batch = 0
+                print('+ \tepoch number: ' + str(epoch))
+                counter = 0
+                for idx, inputs, labels, domain_gt in data_generator:
+                    # tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
+                    _batch += 1
+                    # if type(labels) == list:
+                    #     labels = torch.stack(labels, dim=1)
+                    # if type(tgt_labels) == list:
+                    #     tgt_labels = torch.stack(tgt_labels, dim=1)
 
-                inputs, labels = inputs.to(device, torch.float), labels.to(device, torch.float)
-                # tgt_inputs, tgt_labels = tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float)
+                    inputs, labels = inputs.to(device, torch.float), labels.to(device, torch.float)
+                    # tgt_inputs, tgt_labels = tgt_inputs.to(device, torch.float), tgt_labels.to(device, torch.float)
 
-                self.optimizer.zero_grad()
+                    self.optimizer.zero_grad()
 
-                # out = F.sigmoid(self.model(inputs))
-                # tgt_out = F.sigmoid(self.model(tgt_inputs))
+                    # out = F.sigmoid(self.model(inputs))
+                    # tgt_out = F.sigmoid(self.model(tgt_inputs))
 
-                out, src_encoded = self.model(inputs)
-                # tgt_out, tgt_encoded = self.model(tgt_inputs)
-                # out = F.sigmoid(out)
-                # tgt_out = F.sigmoid(tgt_out)
-                #self.model.unfroze()
+                    out, src_encoded = self.model(inputs)
+                    # tgt_out, tgt_encoded = self.model(tgt_inputs)
+                    # out = F.sigmoid(out)
+                    # tgt_out = F.sigmoid(tgt_out)
+                    # self.model.unfroze()
 
-                loss = self.criterion(out, labels)
-                # loss = self.criterion(out, labels)
-                # tgt_loss = self.criterion(tgt_out, tgt_labels)
-                _loss.append(loss.item())
-                #_loss.append(tgt_loss.item())
+                    loss = self.criterion(out, labels)
+                    # loss = self.criterion(out, labels)
+                    # tgt_loss = self.criterion(tgt_out, tgt_labels)
+                    _loss.append(loss.item())
+                    # _loss.append(tgt_loss.item())
 
-                # loss += tgt_loss
-                loss.backward()
-                self.optimizer.step()
+                    # loss += tgt_loss
+                    loss.backward()
+                    self.optimizer.step()
 
-                # loss_kl = kl_criterion()
+                    # loss_kl = kl_criterion()
 
-                # loss_domain = criterion_domain(torch.squeeze(domain), torch.squeeze(domain_gt))
-                # _loss_domain.append(loss_domain.item())
-                #
-                # loss_domain.backward()
-                # self.optimizer.step()
-                #
-                # p = float(_batch) / batches_n
-                # lambd = 2. / (1. + np.exp(-10. * p)) - 1
-                # self.model.lambd = lambd
+                    # loss_domain = criterion_domain(torch.squeeze(domain), torch.squeeze(domain_gt))
+                    # _loss_domain.append(loss_domain.item())
+                    #
+                    # loss_domain.backward()
+                    # self.optimizer.step()
+                    #
+                    # p = float(_batch) / batches_n
+                    # lambd = 2. / (1. + np.exp(-10. * p)) - 1
+                    # self.model.lambd = lambd
 
-                _loss_mean = round(mean(_loss), 5)
-                # _loss_mean_domain = round(mean(_loss_domain), 5)
-                sys.stdout.write(
-                    '\r+\tbatch: {}, {}: {}'.format(_batch, self.criterion.__class__.__name__,
-                                                         _loss_mean))
+                    _loss_mean = round(mean(_loss), 5)
+                    # _loss_mean_domain = round(mean(_loss_domain), 5)
+                    sys.stdout.write(
+                        '\r+\tbatch: {}, {}: {}'.format(_batch, self.criterion.__class__.__name__,
+                                                        _loss_mean))
 
-                counter += 1
-                #
-                # src_batches.append(inputs)
-                # tgt_batches.append(tgt_inputs)
+                    counter += 1
+                    #
+                    # src_batches.append(inputs)
+                    # tgt_batches.append(tgt_inputs)
 
-            # src_batches = torch.cat(src_batches, dim=0)
-            # tgt_batches = torch.cat(tgt_batches, dim=0)
+                # src_batches = torch.cat(src_batches, dim=0)
+                # tgt_batches = torch.cat(tgt_batches, dim=0)
 
-            self.model.set_train_mode(False)
+                self.model.set_train_mode(False)
+                self.model.eval()
 
-            # src_generator = DataLoader(train_data, shuffle=shuffle, batch_size=len(train_data))
-            # tgt_generator = DataLoader(tgt_data, shuffle=shuffle, batch_size=len(tgt_data))
-            # with torch.no_grad():
-            #     for idx, inputs, labels, domain_gt in src_generator:
-            #         inputs = inputs.to(device, torch.float)
-            #         src_encoded = self.model(inputs)
-            #
-            # print('\n')
-            # for _ in range(0):
-            #     self.optimizer_kl.zero_grad()
-            #
-            #     for idx, inputs, labels, domain_gt in tgt_generator:
-            #         inputs = inputs.to(device, torch.float)
-            #         tgt_encoded = self.model(inputs)
-            #
-            #     loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
-            #     loss.backward()
-            #
-            #     print(loss.item())
-            #     self.optimizer_kl.step()
+                src_generator = DataLoader(train_data, shuffle=shuffle, batch_size=len(train_data))
+                tgt_generator = DataLoader(tgt_data, shuffle=shuffle, batch_size=len(tgt_data))
 
-            if prev_loss <= _loss_mean:
-                n_epochs_stop += 1
-            else:
-                prev_model = self.model
-                n_epochs_stop = 0
-                prev_loss = _loss_mean
+                print('\n')
+                for _ in range(1):
+                    # with torch.no_grad():
+                    self.optimizer_kl.zero_grad()
 
-            if n_epochs_stop == self.epochs_no_improve:
-                self.model = prev_model
-                print('Early Stopping!')
-                break
+                    for idx, inputs, labels, domain_gt in src_generator:
+                        labels = labels.to(device, torch.float)
+                        src_encoded = self.model(labels)
 
-            print('')
-            self.scheduler.step(mean(_loss))
+                    for idx, inputs, labels, domain_gt in tgt_generator:
+                        labels = labels.to(device, torch.float)
+                        tgt_encoded = self.model(labels)
 
+                    loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+                    print(loss.item())
+                    _kl_losses.append(loss.item())
+
+                    # if loss.item() > 0.1:
+                    #  loss.backward()
+                    #  self.optimizer_kl.step()
+
+                _losses.append(_loss_mean)
+                if prev_loss <= _loss_mean:
+                    n_epochs_stop += 1
+                else:
+                    prev_model = self.model
+                    n_epochs_stop = 0
+                    prev_loss = _loss_mean
+
+                if n_epochs_stop == self.epochs_no_improve:
+                    self.model = prev_model
+                    print('Early Stopping!')
+                    break
+
+                print('')
+                self.scheduler.step(mean(_loss))
+
+            f.write('[' + ', '.join(map(str, _kl_losses)) + ']' + '\n')
+            f.write('[' + ', '.join(map(str, _losses)) + ']' + '\n')
+            f.write('\n')
+        torch.save(self.model.state_dict(), self.model_file.format(_loss_mean, epoch))
         print("> Training is over. Thank you for your patience :).")
 
 
@@ -290,6 +317,9 @@ class DomainAdaptationTrainer:
         self.ae_model = ae_model
         self.epochs_no_improve = epochs_no_improve
         self.model.to(device)
+        self.kl_sim = []
+        self.v_accs = []
+        self.t_accs = []
 
     def fit(self, training_loader: DataLoader, validation_loader: DataLoader, additional_training_data_set=None,
             target_generator=None, max_epochs=10, is_step2=False, _dict=None, calibrate=False):
@@ -297,6 +327,7 @@ class DomainAdaptationTrainer:
         prev_metric = 0
 
         target_generator = DataLoader(target_generator.dataset, shuffle=True, batch_size=target_generator.batch_size)
+
         for epoch in range(max_epochs):
             self.model.train()
             print('+ \tepoch number: ' + str(epoch))
@@ -322,6 +353,36 @@ class DomainAdaptationTrainer:
             # src_iter = iter(training_loader)
             tgt_iter = iter(target_generator)
 
+            # ###################### KL Similarity Optimalization ############################
+
+            src_generator = DataLoader(training_loader.dataset, shuffle=True, batch_size=len(training_loader.dataset))
+            tgt_generator = DataLoader(target_generator.dataset, shuffle=True, batch_size=len(target_generator.dataset))
+
+            print('\n')
+            for _ in range(1):
+                # self.optimizer_kl.zero_grad()
+
+                # with torch.no_grad():
+                self.optimizer_kl.zero_grad()
+
+                for idx, inputs, labels, domain_gt in src_generator:
+                    inputs = inputs.to(device, torch.float)
+                    src_encoded = self.ae_model(inputs)
+
+                for idx, inputs, labels, domain_gt in tgt_generator:
+                    inputs = inputs.to(device, torch.float)
+                    tgt_encoded = self.ae_model(inputs)
+
+                loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+                print(loss.item())
+            #
+            # if loss.item() > 1.0:
+            # loss.backward()
+            # self.optimizer_kl.step()
+            #
+            self.optimizer_kl.zero_grad()
+            # #################################################################################
+
             for idx, input, labels, src, loss_upd in batches:
                 n_batch += 1
 
@@ -336,14 +397,15 @@ class DomainAdaptationTrainer:
                 # if type(labels_tgt) == list:
                 #     labels_tgt = torch.stack(labels_tgt, dim=1)
 
-
                 # CrossEntropyLoss does not expect a one-hot encoded vector as the target, but class indices
                 # max(1) will return the maximal value (and index in PyTorch) in this particular dimension.
-                input, labels_, src = input.to(device, torch.float), torch.max(labels, 1)[1].to(device, torch.long), src.to(device, torch.float)
+                input, labels_, src = input.to(device, torch.float), torch.max(labels, 1)[1].to(device,
+                                                                                                torch.long), src.to(
+                    device, torch.float)
                 # input_tgt, labels_tgt, src_tgt = input_tgt.to(device, torch.float), torch.max(labels_tgt, 1)[1].to(device, torch.long), src_tgt.to(device, torch.float)
                 # if self.ae_model is not None:
                 #     input = self.ae_model(input)
-                    #input = torch.cat([input, ae_output], 1)
+                # input = torch.cat([input, ae_output], 1)
 
                 self.optimizer.zero_grad()
 
@@ -357,16 +419,17 @@ class DomainAdaptationTrainer:
                 #################################
 
                 f1, f2, ft, _ = self.model(input)
-                _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight, labels_) #enc_src_out, enc_tgt_out, labels_)
+                _loss = self.criterion(f1, f2, self.model.f1_1.weight, self.model.f2_1.weight,
+                                       labels_)  # enc_src_out, enc_tgt_out, labels_)
 
-          #      loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
+                #      loss_rev = F.binary_cross_entropy_with_logits(torch.squeeze(rev), src)
 
                 if not is_step2 or not loss_upd:
                     _loss_t = self.criterion_t(ft, labels_)
                     _loss = _loss + _loss_t
 
                 # if is_step2:
-                    # _loss = _loss + _loss_rev #
+                # _loss = _loss + _loss_rev #
 
                 loss_f1f2.append(_loss.item())
                 # loss_t.append(_loss_t.item())
@@ -389,34 +452,12 @@ class DomainAdaptationTrainer:
 
             if target_generator is not None:
                 print('> Target data acc: ')
-                self.valid(target_generator, valid=False)
+                _tgt_acc = self.valid(target_generator, valid=False)
 
             self.scheduler.step(_valid_acc)
 
-            print('Train Len: ' + str(len(training_loader.dataset)))
-            print('Target Len: ' + str(len(target_generator.dataset)))
-
-            src_generator = DataLoader(training_loader.dataset, shuffle=True, batch_size=len(training_loader.dataset))
-            tgt_generator = DataLoader(target_generator.dataset, shuffle=True, batch_size=len(target_generator.dataset))
-            with torch.no_grad():
-                for idx, inputs, labels, domain_gt in src_generator:
-                    inputs = inputs.to(device, torch.float)
-                    src_encoded = self.model.ae_model(inputs)
-
-            print('\n')
-            for _ in range(0):
-                self.optimizer_kl.zero_grad()
-
-                for idx, inputs, labels, domain_gt in tgt_generator:
-                    inputs = inputs.to(device, torch.float)
-                    tgt_encoded = self.model.ae_model(inputs)
-
-                loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
-                loss.backward()
-
-                print(loss.item())
-                self.optimizer_kl.step()
-
+            # print('Train Len: ' + str(len(training_loader.dataset)))
+            # print('Target Len: ' + str(len(target_generator.dataset)))
 
             if _valid_acc <= prev_metric:
                 n_epochs_stop += 1
@@ -429,13 +470,17 @@ class DomainAdaptationTrainer:
                 n_epochs_stop = 0
                 prev_metric = _valid_acc
 
+        self.kl_sim.append(round(loss.item(), 8))
+        # self.kl_sim.append(0)
+        self.v_accs.append(round(_valid_acc, 4))
+        self.t_accs.append(round(_tgt_acc, 4))
+
         # calibrating
         # if calibrate:
         #     self.calibrated_model = ModelWithTemperature(self.model, self.ae_model)
         #     self.calibrated_model.set_temperature(validation_loader)
         # else:
         #     self.calibrated_model = self.model
-
 
     def valid(self, data_loader, data_loader_2=None, valid=False):
         with torch.set_grad_enabled(False):
@@ -447,7 +492,7 @@ class DomainAdaptationTrainer:
                 input = input.to(device, torch.float)
                 # if self.ae_model:
                 #     input = self.ae_model(input)
-                   # input = torch.cat([input, ae_output], 1)
+                # input = torch.cat([input, ae_output], 1)
                 f1, f2, ft, rev = self.model(input)
                 if valid:
                     _acc_all.append(
@@ -485,6 +530,8 @@ class DomainAdaptationTrainer:
         training_tgt_data_set.dict = target_data_set.dict
         n_all_wrong_labeled = 0
         n_all = 0
+        n_wrongs = []
+        n_alls = []
 
         for _iter in range(iterations):
             # valid_data = AmazonDomainDataSet()
@@ -529,7 +576,7 @@ class DomainAdaptationTrainer:
             #         valid_data.append(item)
 
             for _i in most_confident_idxs:
-                if f1_idx[_i] == f2_idx[_i] and f1_max[_i] > 0.90 and f2_max[_i] > 0.90:
+                if f1_idx[_i] == f2_idx[_i] and f1_max[_i] > 0.95 and f2_max[_i] > 0.95:
                     n_all_qualified += 1
                     idx_added.append(_i)
                     item = copy.deepcopy(target_generator.dataset.get(_i))
@@ -548,7 +595,14 @@ class DomainAdaptationTrainer:
 
             n_all_wrong_labeled += n_wrong_labeled
             n_all += n_all_qualified
-            print('Iteration: {}, wrong labeled count: {} on {} qualified, all {}. All wrong labeled: {} / {} [{}%]'.format(_iter, n_wrong_labeled, n_all_qualified, len(idx), n_all_wrong_labeled, n_all, round((n_all_wrong_labeled/ n_all), 4) * 100))
+
+            n_wrongs.append(n_all_wrong_labeled)
+            n_alls.append(n_all)
+
+            print(
+                'Iteration: {}, wrong labeled count: {} on {} qualified, all {}. All wrong labeled: {} / {} [{}%]'.format(
+                    _iter, n_wrong_labeled, n_all_qualified, len(idx), n_all_wrong_labeled, n_all,
+                    round((n_all_wrong_labeled / n_all), 4) * 100))
 
             # train_generator, valid_generator, target_generator = train_valid_target_split(training_tgt_data_set,
             #                                                                             target_data_set,
@@ -570,6 +624,13 @@ class DomainAdaptationTrainer:
                      max_epochs=6,
                      calibrate=False)
 
+        with open('/proot/tmp/metrics.txt', 'a+') as f:
+            f.write('[' + ', '.join(map(str, self.kl_sim)) + ']' + '\n')
+            f.write('[' + ', '.join(map(str, self.v_accs)) + ']' + '\n')
+            f.write('[' + ', '.join(map(str, self.t_accs)) + ']' + '\n')
+            f.write('[' + ', '.join(map(str, n_wrongs)) + ']' + '\n')
+            f.write('[' + ', '.join(map(str, n_alls)) + ']' + '\n')
+            f.write('\n')
 
     def _predict(self, data_generator: DataLoader):
         assert data_generator.batch_size == len(data_generator.dataset)
