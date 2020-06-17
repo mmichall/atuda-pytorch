@@ -17,5 +17,7 @@ python train.py
     --autoencoder_shape '(5000,1000,250)'
     --model_file 'auto_encoder_5000_1000_250.pt'
 
+    python train.py --data_set 'amazon'  --src_domain 'books'  --tgt_domain 'kitchen'  --model 'AutoEncoder'  --max_epochs 100  --train_batch_size 16   --train_data_set_shuffle True  --learning_rate 1.0e-04  --reduce_lr_factor 0.2  --reduce_lr_patience 3  --denoising_factor 0.5  --epochs_no_improve 3  --loss MSELoss(reduction='mean')  --autoencoder_shape '(5000,1000,250)'  --model_file 'auto_encoder_5000_1000_250.pt'
+
     -> mse loss: 0.0064
 
