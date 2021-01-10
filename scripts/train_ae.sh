@@ -1,0 +1,1 @@
+nvidia-docker run -it -v /home/mperelkiewicz/projects/domain_adaptation:/proot atuda python train.py --data_set 'amazon' --src_domain 'books' --tgt_domain 'kitchen' --model 'AutoEncoder' --max_epochs 400 --train_batch_size 8 --learning_rate 1.0e-03  --reduce_lr_factor 0.5 --denoising_factor 0.7 --epochs_no_improve 5 --autoencoder_shape '(5000,1000,250)'

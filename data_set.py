@@ -1,4 +1,5 @@
 import copy
+import random
 from typing import List
 import pandas as pd
 import numpy as np
@@ -113,7 +114,6 @@ def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_
     data_set.summary('Unsupervised data set')
 
     return DataLoader(data_set, **params_train)
-
 
 def load_data(src_domain, tgt_domain, verbose=False, return_input=False):
     src_domain_data_set = AmazonDomainDataSet(src_domain, True, return_input=return_input)

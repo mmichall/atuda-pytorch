@@ -1,8 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-import numpy as np
-from torch.nn import MSELoss, KLDivLoss, BCEWithLogitsLoss
+from torch.nn import BCEWithLogitsLoss
 
 
 class MultiViewLoss(nn.Module):

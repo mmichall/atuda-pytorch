@@ -34,7 +34,7 @@ def doc2one_hot(doc: List[str], dictionary: Dict, words_to_reconstruct=None):
             continue
         indxes.add(dictionary[word][0])
         #vector = np.add(vector, word2one_hot(word[0], dictionary, vec_length))
-        vector = np.zeros(len(dictionary))
+    vector = np.zeros(len(dictionary))
     vector[list(indxes)] = 1
     return vector
 

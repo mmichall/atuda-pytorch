@@ -92,10 +92,10 @@ class ATTFeedforward(torch.nn.Module):
         self.hidden_size = hidden_size
         self.ae_model = ae_model
 
-        self.f = torch.nn.Linear(self.input_size, 500)
+        self.f = torch.nn.Linear(self.input_size, 1000)
         self.f_relu = torch.nn.ReLU()
         self.f_dropout = torch.nn.Dropout(p=0.4)
-        self.f2 = torch.nn.Linear(500, 250)
+        self.f2 = torch.nn.Linear(1000, 250)
         self.f2_relu = torch.nn.ReLU()
         self.f2_dropout = torch.nn.Dropout(p=0.4)
         # self.f_batchnorm = torch.nn.BatchNorm1d(50)

@@ -5,6 +5,7 @@ from statistics import mean
 import operator
 import torch
 import numpy as np
+from sklearn.linear_model import SGDClassifier
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.autograd import Variable
 import math
@@ -14,6 +15,7 @@ from nn.loss import KLDivergenceLoss
 from nn.model import ModelWithTemperature, ATTFeedforward, SimpleAutoEncoder
 from utils.measure import acc
 from torch.utils.data import DataLoader
+from sklearn.svm import SVC, LinearSVC
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -123,8 +125,9 @@ class AEGeneratorTrainer:
                         generator_losses.append(g_tgt_loss.item())
 
                 sys.stdout.write('\r+\tepoch: %d / %d, batch: %d / %d, %s: %4.4f, %4.4f, %4.4f' % (
-                i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses), mean(domain_losses),
-                mean(generator_losses)))
+                    i_epoch, self.max_epochs, i_batch, n_batches, 'BCE: ', mean(reconstruction_losses),
+                    mean(domain_losses),
+                    mean(generator_losses)))
 
             self.scheduler.step(mean(reconstruction_losses))
             print('')
@@ -153,8 +156,11 @@ class AEGeneratorTrainer:
 
 
 class AutoEncoderTrainer:
-    def __init__(self, model, criterion, optimizer, optimizer_kl, scheduler, max_epochs, epochs_no_improve=3,
-                 model_file=''):
+    def __init__(self, src_domain, tgt_domain, model, criterion, optimizer, optimizer_kl, scheduler, max_epochs,
+                 epochs_no_improve=3,
+                 model_file='', kl_threshold=0):
+        self.src_domain = src_domain
+        self.tgt_domain = tgt_domain
         self.model: SimpleAutoEncoder = model
         self.criterion = criterion
         self.optimizer = optimizer
@@ -163,6 +169,7 @@ class AutoEncoderTrainer:
         self.scheduler = scheduler
         self.epochs_no_improve = epochs_no_improve
         self.model_file = model_file
+        self.kl_threshold = kl_threshold
 
     def fit(self, train_data, tgt_data, shuffle=True, denoising_factor=0.0, batch_size=8, return_input=True):
         print("> Training is running...")
@@ -184,7 +191,7 @@ class AutoEncoderTrainer:
         prev_loss = 999
         prev_model = None
 
-        with open('/proot/tmp/autoencoder_metrics.txt', 'a+') as f:
+        with open('tmp/autoencoder_metrics.txt', 'a+') as f:
             _kl_losses = []
             _losses = []
             for epoch in range(self.max_epochs):
@@ -272,13 +279,14 @@ class AutoEncoderTrainer:
                         labels = labels.to(device, torch.float)
                         tgt_encoded = self.model(labels)
 
-                    loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
-                    print(loss.item())
-                    _kl_losses.append(loss.item())
+                    kl_loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+                    print(kl_loss.item())
+                    _kl_losses.append(kl_loss.item())
+                    print(self.kl_threshold)
 
-                    # if loss.item() > 0.1:
-                    #  loss.backward()
-                    #  self.optimizer_kl.step()
+                    if kl_loss.item() > self.kl_threshold:
+                        kl_loss.backward()
+                        self.optimizer_kl.step()
 
                 _losses.append(_loss_mean)
                 if prev_loss <= _loss_mean:
@@ -296,10 +304,14 @@ class AutoEncoderTrainer:
                 print('')
                 self.scheduler.step(mean(_loss))
 
+            f.write(self.src_domain + ' --> ' + self.tgt_domain + '\n')
             f.write('[' + ', '.join(map(str, _kl_losses)) + ']' + '\n')
             f.write('[' + ', '.join(map(str, _losses)) + ']' + '\n')
             f.write('\n')
-        torch.save(self.model.state_dict(), self.model_file.format(_loss_mean, epoch))
+
+        model_file_name = self.model_file.format(self.src_domain, self.tgt_domain, _loss_mean, epoch)
+        torch.save(self.model.state_dict(), model_file_name)
+        print('Model was saved in {} file.'.format(model_file_name))
         print("> Training is over. Thank you for your patience :).")
 
 
@@ -320,6 +332,8 @@ class DomainAdaptationTrainer:
         self.kl_sim = []
         self.v_accs = []
         self.t_accs = []
+        self.src_domain = ""
+        self.tgt_domain = ""
 
     def fit(self, training_loader: DataLoader, validation_loader: DataLoader, additional_training_data_set=None,
             target_generator=None, max_epochs=10, is_step2=False, _dict=None, calibrate=False):
@@ -624,7 +638,8 @@ class DomainAdaptationTrainer:
                      max_epochs=6,
                      calibrate=False)
 
-        with open('/proot/tmp/metrics.txt', 'a+') as f:
+        with open('tmp/metrics.txt', 'a+') as f:
+            f.write(self.src_domain + ' ---> ' + self.tgt_domain + '\n')
             f.write('[' + ', '.join(map(str, self.kl_sim)) + ']' + '\n')
             f.write('[' + ', '.join(map(str, self.v_accs)) + ']' + '\n')
             f.write('[' + ', '.join(map(str, self.t_accs)) + ']' + '\n')
@@ -643,3 +658,56 @@ class DomainAdaptationTrainer:
                 # input = torch.cat([input, ae_output], 1)
                 f1, f2, ft, rev = self.model(input)
                 return idx, F.softmax(f1, dim=1), F.softmax(f2, dim=1), F.softmax(ft, dim=1)
+
+
+class SVMTrainer:
+
+    def __init__(self, train_generator, valid_generator, target_generator, ae_model):
+        self.train_generator = train_generator
+        self.valid_generator = valid_generator
+        self.target_generator = target_generator
+        self.ae_model = ae_model
+        self.cls = LinearSVC()
+
+        # self.cls = sklearn.linear_model.(verbose=1,
+        #                          warm_start=True,
+        #                          max_iter=620,
+        #                          early_stopping=True,
+        #                          n_iter_no_change=10,
+        #                          # tol=1e-1, #the iterations will stop when (loss > previous_loss - tol)
+        #                          validation_fraction=0.1)
+
+    def fit(self):
+        X = []
+        Y = []
+        for idx, batch_one_hot, labels, src in self.train_generator:
+            y = labels[0].numpy()
+            # batch_one_hot = batch_one_hot.to(device, torch.float)
+            # batch_one_hot = self.ae_model(batch_one_hot).cpu().detach().numpy()
+            x = batch_one_hot
+            X.append(x)
+            Y.append(y)
+
+        X = np.concatenate(X)
+        Y = np.concatenate(Y)
+
+        self.cls.fit(X, Y)
+
+        X = []
+        Y = []
+        for idx, batch_one_hot, labels, src in self.target_generator:
+            y = labels[0].numpy()
+            # batch_one_hot = batch_one_hot.to(device, torch.float)
+            # batch_one_hot = self.ae_model(batch_one_hot).cpu().detach().numpy()
+            x = batch_one_hot
+            X.append(x)
+            Y.append(y)
+
+        X = np.concatenate(X)
+        Y = np.concatenate(Y)
+
+        golden = Y
+        predicted = self.cls.predict(X)
+
+        print(golden, predicted)
+        print((golden == predicted).sum() / len(golden))
