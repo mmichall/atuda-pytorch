@@ -14,7 +14,7 @@ from nn.ae_gan import AE_Generator
 from nn.loss import MultiViewLoss
 from nn.model import SimpleAutoEncoder, ATTFeedforward
 from data_set import train_valid_target_split
-from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer, AEGeneratorTrainer, SVMTrainer
+from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer, AEGeneratorTrainer
 from sklearn.linear_model import SGDClassifier
 
 
@@ -101,26 +101,6 @@ def run(args):
                                  iterations=args.pseudo_label_iterations, train_params=train_params,
                                  max_epochs=args.max_epochs)
 
-    elif args.model == 'SVM':
-        # Datasets (DataFrame: data + dictionary)
-        src_domain_data_set, tgt_domain_data_set = load_data(args.src_domain, args.tgt_domain, verbose=True)
-        # DataLoaders
-        train_generator, valid_generator, target_generator = train_valid_target_split(src_domain_data_set,
-                                                                                      tgt_domain_data_set,
-                                                                                      train_params)
-
-        trainer = SVMTrainer(train_generator, valid_generator, target_generator, get_ae_model())
-        trainer.fit()
-
-        # X = np.array([x[1].numpy() for x in train_generator])
-        # Y = np.array([x[2][0].numpy() for x in train_generator])
-        #
-        # clf = SGDClassifier(learning_rate='constant', eta0=0.1, shuffle=False, max_iter=1)
-        # for x, y in zip(X, Y):
-        #     print(x, y)
-        #     if len(y) == 8:
-        #         clf.partial_fit(np.array(x), np.array(y), classes=np.unique([1, 0]))
-        #         print(clf.predict(x))
 
 
 def get_ae_model():
@@ -168,9 +148,9 @@ def parameters_summary():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    src_domain = "kitchen"
-    tgt_domain = "books"
-    kl_threshold = 1 # only for file name ?
+    src_domain = "dvd"
+    tgt_domain = "electronics"
+    kl_threshold = 999 # only for file name ?
 
     # Experiment parameters
     parser.add_argument('--data_set', required=False, default='amazon')
@@ -180,7 +160,7 @@ if __name__ == '__main__':
                         default=kl_threshold)
 
     # Training parameters
-    parser.add_argument('--model', required=False, default='SVM')
+    parser.add_argument('--model', required=False, default='AutoEncoder')
     parser.add_argument('--max_epochs', required=False, type=int, default=400)  # 400
     parser.add_argument('--train_batch_size', required=False, type=int, default=8) # 8
     parser.add_argument('--train_data_set_shuffle', required=False, type=bool, default=True)
@@ -191,17 +171,15 @@ if __name__ == '__main__':
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.7)
     parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
-    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_kitchen_books__5000_5000_bce_0.00354_kl_1_epoch_249.pt')
+    parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_dvd_electronics__5000_5000_bce_0.00113_kl_1_epoch_156.pt')
     parser.add_argument('--load_attnn_model', required=False, type=bool, default=False)
     parser.add_argument('--pseudo_label_iterations', required=False, type=int, default=10)
 
     # Models parameters
-    parser.add_argument('--autoencoder_shape', required=False, default='(5000, 5000)')
+    parser.add_argument('--autoencoder_shape', required=False, default='(5000, 3000)')
     parser.add_argument('--attff_input_size', required=False, type=int, default=5000)
     parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
-    parser.add_argument('--ae_model_file', required=False,
-                        default='tmp/auto_encoder_{}_{}_' + '_5000_5000_bce_{}_kl_' + str(
-                            kl_threshold) + '_epoch_{}.pt')
+    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_{}_{}_' + '_5000_2000_bce_{}_per_360b_' + '_epoch_{}.pt')
     parser.add_argument('--attnn_model_file', required=False, default='tmp/attnn_model_{}_{}.pt')
 
     args = parser.parse_args()

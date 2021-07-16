@@ -203,6 +203,8 @@ class AutoEncoderTrainer:
                 print('+ \tepoch number: ' + str(epoch))
                 counter = 0
                 for idx, inputs, labels, domain_gt in data_generator:
+                    self.model.train()
+                    self.model.set_train_mode(True)
                     # tgt_idx, tgt_inputs, tgt_labels, tgt_domain_gt = next(tgt_data_iter)
                     _batch += 1
                     # if type(labels) == list:
@@ -257,37 +259,44 @@ class AutoEncoderTrainer:
                     # src_batches.append(inputs)
                     # tgt_batches.append(tgt_inputs)
 
+                    if counter % 360 == 0:
+                        # dlaczego?
+                        self.model.set_train_mode(False)
+                        self.model.eval()
+
+                        src_generator = DataLoader(train_data, shuffle=shuffle, batch_size=len(train_data))
+                        tgt_generator = DataLoader(tgt_data, shuffle=shuffle, batch_size=len(tgt_data))
+                        for _ in range(1):
+                            # with torch.no_grad():
+                            self.optimizer_kl.zero_grad()
+
+                            for idx, inputs, labels, domain_gt in src_generator:
+                                labels = labels.to(device, torch.float)
+                                src_encoded = self.model(labels)
+
+                            for idx, inputs, labels, domain_gt in tgt_generator:
+                                labels = labels.to(device, torch.float)
+                                tgt_encoded = self.model(labels)
+
+                            kl_loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
+                            print(' -> KL_Loss: ' + str(kl_loss.item()))
+
+                            # print(self.kl_threshold)
+
+                            # if kl_loss.item() > self.kl_threshold:
+                            # if epoch % 10 == 0:
+
+                            if kl_loss.item() > 0.0001:
+                                kl_loss.backward()
+                                self.optimizer_kl.step()
+
                 # src_batches = torch.cat(src_batches, dim=0)
                 # tgt_batches = torch.cat(tgt_batches, dim=0)
 
-                self.model.set_train_mode(False)
-                self.model.eval()
-
-                src_generator = DataLoader(train_data, shuffle=shuffle, batch_size=len(train_data))
-                tgt_generator = DataLoader(tgt_data, shuffle=shuffle, batch_size=len(tgt_data))
-
                 print('\n')
-                for _ in range(1):
-                    # with torch.no_grad():
-                    self.optimizer_kl.zero_grad()
 
-                    for idx, inputs, labels, domain_gt in src_generator:
-                        labels = labels.to(device, torch.float)
-                        src_encoded = self.model(labels)
 
-                    for idx, inputs, labels, domain_gt in tgt_generator:
-                        labels = labels.to(device, torch.float)
-                        tgt_encoded = self.model(labels)
-
-                    kl_loss = KLDivergenceLoss()(src_encoded, tgt_encoded)
-                    print(kl_loss.item())
-                    _kl_losses.append(kl_loss.item())
-                    print(self.kl_threshold)
-
-                    if kl_loss.item() > self.kl_threshold:
-                        kl_loss.backward()
-                        self.optimizer_kl.step()
-
+                _kl_losses.append(kl_loss.item())
                 _losses.append(_loss_mean)
                 if prev_loss <= _loss_mean:
                     n_epochs_stop += 1
@@ -304,7 +313,7 @@ class AutoEncoderTrainer:
                 print('')
                 self.scheduler.step(mean(_loss))
 
-            f.write(self.src_domain + ' --> ' + self.tgt_domain + '\n')
+            f.write(self.src_domain + ' --> ' + self.tgt_domain + ' ' + str(self.kl_threshold) + '\n')
             f.write('[' + ', '.join(map(str, _kl_losses)) + ']' + '\n')
             f.write('[' + ', '.join(map(str, _losses)) + ']' + '\n')
             f.write('\n')
@@ -658,56 +667,3 @@ class DomainAdaptationTrainer:
                 # input = torch.cat([input, ae_output], 1)
                 f1, f2, ft, rev = self.model(input)
                 return idx, F.softmax(f1, dim=1), F.softmax(f2, dim=1), F.softmax(ft, dim=1)
-
-
-class SVMTrainer:
-
-    def __init__(self, train_generator, valid_generator, target_generator, ae_model):
-        self.train_generator = train_generator
-        self.valid_generator = valid_generator
-        self.target_generator = target_generator
-        self.ae_model = ae_model
-        self.cls = LinearSVC()
-
-        # self.cls = sklearn.linear_model.(verbose=1,
-        #                          warm_start=True,
-        #                          max_iter=620,
-        #                          early_stopping=True,
-        #                          n_iter_no_change=10,
-        #                          # tol=1e-1, #the iterations will stop when (loss > previous_loss - tol)
-        #                          validation_fraction=0.1)
-
-    def fit(self):
-        X = []
-        Y = []
-        for idx, batch_one_hot, labels, src in self.train_generator:
-            y = labels[0].numpy()
-            # batch_one_hot = batch_one_hot.to(device, torch.float)
-            # batch_one_hot = self.ae_model(batch_one_hot).cpu().detach().numpy()
-            x = batch_one_hot
-            X.append(x)
-            Y.append(y)
-
-        X = np.concatenate(X)
-        Y = np.concatenate(Y)
-
-        self.cls.fit(X, Y)
-
-        X = []
-        Y = []
-        for idx, batch_one_hot, labels, src in self.target_generator:
-            y = labels[0].numpy()
-            # batch_one_hot = batch_one_hot.to(device, torch.float)
-            # batch_one_hot = self.ae_model(batch_one_hot).cpu().detach().numpy()
-            x = batch_one_hot
-            X.append(x)
-            Y.append(y)
-
-        X = np.concatenate(X)
-        Y = np.concatenate(Y)
-
-        golden = Y
-        predicted = self.cls.predict(X)
-
-        print(golden, predicted)
-        print((golden == predicted).sum() / len(golden))

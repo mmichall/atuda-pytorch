@@ -91,8 +91,8 @@ def train_valid_target_split(src_domain_data_set, tgt_domain_data_set, params_tr
     train_subset = AmazonSubsetWrapper(src_domain_data_set, train_idxs)
     valid_subset = AmazonSubsetWrapper(src_domain_data_set, valid_idxs)
 
-    params_valid = {'batch_size': len(valid_subset)}
-    params_target = {'batch_size': len(tgt_domain_data_set)}
+    # params_valid = {'batch_size': len(valid_subset)}
+    # params_target = {'batch_size': len(tgt_domain_data_set)}
 
     # Generators
     training_generator = DataLoader(train_subset, **params_train)
