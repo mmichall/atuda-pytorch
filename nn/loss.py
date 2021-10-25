@@ -3,6 +3,8 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn import BCEWithLogitsLoss
 
+use_cuda = torch.cuda.is_available()
+device = torch.device("cuda:0" if use_cuda else "cpu")
 
 class MultiViewLoss(nn.Module):
 
@@ -34,8 +36,8 @@ class KLDivergenceLoss(nn.Module):
     def __init__(self):
         super(KLDivergenceLoss, self).__init__()
 
-    def forward(self, p, q):
-        return KL(p, q)
+    def forward(self, P, Q):
+        return KL(P, Q)
 
 
 class BCEWithDivergenceLoss(nn.Module):
@@ -71,17 +73,22 @@ class ReversalLoss(nn.Module):
         return domain_err
 
 
+class DLoss(nn.Module):
+    def __init__(self):
+        super(DLoss, self).__init__()
+
+    def forward(self, out):
+        return torch.mean(torch.square(torch.ones(len(out), device=device) - out))
+
+
 def KL(P, Q):
     """ Epsilon is used here to avoid conditional code for
     checking that neither P nor Q is equal to 0. """
-    epsilon = 0.00001
+    epsilon = 0.000000001
 
-    P = torch.softmax(torch.mean(P, dim=0), 0)
-    Q = torch.softmax(torch.mean(Q, dim=0), 0)
+    P = torch.softmax(torch.mean(P, dim=0), 0) + epsilon
+    Q = torch.softmax(torch.mean(Q, dim=0), 0) + epsilon
 
     # You may want to instead make copies to avoid changing the np arrays.
-    P = P + epsilon
-    Q = Q + epsilon
-
-    d = (P * (P / Q).log()).sum()
+    d = (P * (P / Q).log()).sum() + (Q * (Q / P).log()).sum()
     return d

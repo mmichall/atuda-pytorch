@@ -1,6 +1,6 @@
 from data_set import AmazonDomainDataSet, train_valid_target_split, load_data
 from utils.data import build_dictionary
-
+import numpy as np
 
 def get_unique_per_set_words(data_set1: AmazonDomainDataSet, data_set2: AmazonDomainDataSet):
 

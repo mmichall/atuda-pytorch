@@ -26,17 +26,48 @@ def grad_reverse(x, lambd):
     return GradReverse(lambd)(x)
 
 
+class DistNet(nn.Module):
+
+    def __init__(self):
+        super(DistNet, self).__init__()
+
+        self.encoder_modules = []
+        seq_list = []
+        seq_list.append(nn.Linear(5000, 3000))
+        # seq_list.append(nn.Dropout(p=0.4))
+        self.encoder_modules.append(nn.Sequential(*seq_list))
+
+        self.encoder = nn.Sequential(*self.encoder_modules)
+        self.classification_module = nn.Linear(3000, 1)
+
+        self.to(device)
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = torch.nn.functional.dropout(x, p=0.5)
+        x = self.classification_module(F.relu(x))
+        return x
+
+
+class Discriminator(nn.Module):
+    def __init__(self, input_length: int):
+        super(Discriminator, self).__init__()
+        self.dense = nn.Linear(int(input_length), 1)
+        self.activation = nn.Sigmoid()
+
+    def forward(self, x):
+        return self.activation(self.dense(x))
+
+
 class SimpleAutoEncoder(nn.Module):
     def __init__(self, shape: tuple):
         super(SimpleAutoEncoder, self).__init__()
         self.train_mode = True
         self.shape = shape
-        self.lambd = 0
-
-       # self.domain_linear = nn.Linear(250, 1)
 
         self.encoder_modules = []
         self.decoder_modules = []
+
         for _i in range(len(shape)-1):
             seq_list = []
             seq_list.append(nn.Linear(shape[_i], shape[_i+1]))
@@ -59,12 +90,9 @@ class SimpleAutoEncoder(nn.Module):
         self.to(device)
 
     def forward(self, x):
-    #    result = torch.empty(0).cuda()
         x = self.encoder(x)
         if self.train_mode:
-          #  domain_out = self.domain_linear(grad_reverse(x, self.lambd))
             y = self.decoder(F.relu(x))
-           # return F.sigmoid(y)#, domain_out
             return y, x
         else:
             return x
@@ -185,6 +213,15 @@ class ATTFeedforward(torch.nn.Module):
         print('> Model summary: \n{}'.format(self))
       #  summary(self, input_size=(self.hidden_size,  self.input_size, ))
 
+
+class LogisticRegression(torch.nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LogisticRegression, self).__init__()
+        self.linear = torch.nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        outputs = self.linear(x)
+        return outputs
 
 class ModelWithTemperature(nn.Module):
     """

@@ -1,21 +1,17 @@
 import argparse
 import os
 import numpy as np
-import sklearn
 
 from torch.nn.modules.loss import CrossEntropyLoss, MSELoss, _Loss, BCEWithLogitsLoss
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import ast
 import torch
-from torch.utils.data import DataLoader
 
 from data_set import load_data
-from nn.ae_gan import AE_Generator
 from nn.loss import MultiViewLoss
 from nn.model import SimpleAutoEncoder, ATTFeedforward
 from data_set import train_valid_target_split
-from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer, AEGeneratorTrainer
-from sklearn.linear_model import SGDClassifier
+from nn.trainer import AutoEncoderTrainer, DomainAdaptationTrainer
 
 
 def run(args):
@@ -35,8 +31,7 @@ def run(args):
                                       patience=args.reduce_lr_patience)
         criterion = BCEWithLogitsLoss()
 
-        src_domain_data_set, tgt_domain_data_set = load_data(args.src_domain, args.tgt_domain, verbose=True,
-                                                             return_input=True)
+        src_domain_data_set, tgt_domain_data_set = load_data(args.src_domain, args.tgt_domain, verbose=True, return_input=True)
 
         trainer = AutoEncoderTrainer(args.src_domain, args.tgt_domain, ae_model, criterion, optimizer, optimizer_kl,
                                      scheduler, args.max_epochs, epochs_no_improve=args.epochs_no_improve,
@@ -77,7 +72,7 @@ def run(args):
 
         optimizer = torch.optim.Adagrad(attff_model.parameters(), lr=args.learning_rate)
         optimizer_kl = torch.optim.Adagrad(ae_model.encoder.parameters(), lr=args.learning_rate_kl)
-        scheduler = ReduceLROnPlateau(optimizer, factor=args.reduce_lr_factor, patience=3)
+        scheduler = ReduceLROnPlateau(optimizer, factor=args.reduce_lr_factor, patience=4)
 
         trainer = DomainAdaptationTrainer(attff_model, criterion, criterion_t, optimizer, optimizer_kl, scheduler,
                                           args.max_epochs,
@@ -169,7 +164,7 @@ if __name__ == '__main__':
     parser.add_argument('--reduce_lr_factor', required=False, type=float, default=0.5)
     parser.add_argument('--reduce_lr_patience', required=False, type=int, default=3)
     parser.add_argument('--denoising_factor', required=False, type=float, default=0.7)
-    parser.add_argument('--epochs_no_improve', required=False, type=float, default=5)
+    parser.add_argument('--epochs_no_improve', required=False, type=float, default=8)
     parser.add_argument('--loss', required=False, type=_Loss, default=MSELoss(reduction='mean'))
     parser.add_argument('--auto_encoder_embedding', required=False, default='tmp/auto_encoder_dvd_electronics__5000_5000_bce_0.00113_kl_1_epoch_156.pt')
     parser.add_argument('--load_attnn_model', required=False, type=bool, default=False)
@@ -179,7 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--autoencoder_shape', required=False, default='(5000, 3000)')
     parser.add_argument('--attff_input_size', required=False, type=int, default=5000)
     parser.add_argument('--attff_hidden_size', required=False, type=int, default=50)
-    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_{}_{}_' + '_5000_2000_bce_{}_per_360b_' + '_epoch_{}.pt')
+    parser.add_argument('--ae_model_file', required=False, default='tmp/auto_encoder_{}_{}_' + '_5000_3000_bce_{}_BASELINE-encoder_{}.pt')
     parser.add_argument('--attnn_model_file', required=False, default='tmp/attnn_model_{}_{}.pt')
 
     args = parser.parse_args()

@@ -34,20 +34,24 @@ def doc2one_hot(doc: List[str], dictionary: Dict, words_to_reconstruct=None):
             continue
         indxes.add(dictionary[word][0])
         #vector = np.add(vector, word2one_hot(word[0], dictionary, vec_length))
-    vector = np.zeros(len(dictionary))
-    vector[list(indxes)] = 1
+    vector = np.zeros(5000, dtype=int)
+    vector[list(indxes)] = int(1)
     return vector
 
 
 def build_dictionary(data_sets: List, limit=None):
     _dict = {}
 
+    datasetdicts = []
     for data_set in data_sets:
+        datasetdict = []
         _len = len(data_set)
         for item in data_set.data.itertuples():
             for word in item.acl_processed:
                 cnt = _dict.setdefault(word[0], 0)
                 _dict[word[0]] = cnt + int(word[1]) / _len
+                datasetdict.append(word[0])
+        datasetdicts.append(set(datasetdict))
 
     _sorted_dict = _dict
     if limit:
@@ -57,4 +61,18 @@ def build_dictionary(data_sets: List, limit=None):
 
     for i, key in enumerate(_sorted_dict):
         _sorted_dict[key] = (i, _sorted_dict[key])
+
+    # counter = 0
+    # for word in datasetdicts[0]:
+    #     if word not in datasetdicts[1] and word in _sorted_dict:
+    #         counter = counter + 1
+    #         _sorted_dict.pop(word)
+    # print('Dataset words in: ' + str(counter))
+    #
+    # for word in datasetdicts[1]:
+    #     if word not in datasetdicts[0] and word in _sorted_dict:
+    #         counter = counter + 1
+    #         _sorted_dict.pop(word)
+    # print('Dataset words in: ' + str(counter))
+
     return _sorted_dict

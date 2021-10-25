@@ -10,7 +10,7 @@ from utils.reader import AmazonDomainDataReader
 
 class AmazonDomainDataSet(dataset.Dataset):
 
-    def __init__(self, domain: str = None, is_labeled=False, denoising_factor=0., words_to_reconstruct=None, return_input=False):
+    def __init__(self, domain: str = None, is_labeled=False, denoising_factor=0., words_to_reconstruct=None, return_input=False, all=False):
         self.domain = domain
         self.data: pd.DataFrame = AmazonDomainDataReader.read(domain, is_labeled)
         self.dict = {}
@@ -19,6 +19,7 @@ class AmazonDomainDataSet(dataset.Dataset):
         self.length = len(self.data)
         self.is_labeled = is_labeled
         self.return_input = return_input
+        self.sration = []
 
     def __len__(self):
         return self.length
@@ -32,11 +33,11 @@ class AmazonDomainDataSet(dataset.Dataset):
             _denoised = copy.deepcopy(_doc2one_hot)
             mask = np.random.choice([0, 1], size=(len(_denoised),), p=[self.denoising_factor, 1 - self.denoising_factor])
             _denoised = mask * _denoised
-            return index, _denoised, _doc2one_hot, item.src
+            return index, _denoised, _doc2one_hot, item.src, item.sentiment
 
         if self.words_to_reconstruct is not None:
             _denoised = doc2one_hot(item.acl_processed, self.dict, self.words_to_reconstruct)
-            return index, _denoised, item.sentiment, self.is_labeled
+            return index, _denoised, item.sentiment, 1.0 - self.is_labeled
 
         return index, _doc2one_hot, item.sentiment, item.src
 
@@ -115,14 +116,40 @@ def as_one_dataloader(src_domain: str, tgt_domain: str, params_train, denoising_
 
     return DataLoader(data_set, **params_train)
 
+
 def load_data(src_domain, tgt_domain, verbose=False, return_input=False):
     src_domain_data_set = AmazonDomainDataSet(src_domain, True, return_input=return_input)
-    tgt_domain_data_set = AmazonDomainDataSet(tgt_domain, False, return_input=return_input)
+
+    src_domain_data_set2 = AmazonDomainDataSet(src_domain, True, return_input=return_input)
+    src_domain_data_set.append_set(src_domain_data_set2)
+    src_domain_data_set.append_set(src_domain_data_set2)
+
+    tgt_domain_data_set = AmazonDomainDataSet(tgt_domain, False, return_input=return_input, all=False)
+
+    # sum = []
+    # try:
+    #     for id, onehot, sent, src in src_domain_data_set:
+    #         sum.append(onehot)
+    # except KeyError:
+    #     pass
+    # s1 = np.sum(sum, axis=0) / len(src_domain_data_set)
+    # sum = []
+    # try:
+    #     for id, onehot, sent, src in tgt_domain_data_set:
+    #         sum.append(onehot)
+    # except KeyError:
+    #     pass
+    # s2 = np.sum(sum, axis=0) / len(tgt_domain_data_set)
+    #
+    # sration = s1 / (s2 + 0.0000001)
+    # sration = [1 if 4 > ss > 0.25 else 0 for ss in sration]
 
     dictionary = build_dictionary([src_domain_data_set, tgt_domain_data_set], 5000)
 
     src_domain_data_set.dict = dictionary
     tgt_domain_data_set.dict = dictionary
+    # src_domain_data_set.sration = sration
+    # tgt_domain_data_set.sration = sration
 
     if verbose:
         src_domain_data_set.summary('src_domain_data_set')
